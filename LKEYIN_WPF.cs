@@ -36,7 +36,7 @@ using AcColor = Autodesk.AutoCAD.Colors.Color;
 
 namespace CadastreTools
 {
-    // --- 1. GLOBAL CONSTANTS --- -
+    // --- 1. GLOBAL CONSTANTS ---
     public static class CadConstants
     {
         public const string LAY_TXT_BRG = "BEARING";
