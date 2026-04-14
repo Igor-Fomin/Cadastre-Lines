@@ -36,7 +36,7 @@ using AcColor = Autodesk.AutoCAD.Colors.Color;
 
 namespace CadastreTools;
 
-// --- 1. GLOBAL CONSTANTS ---
+#region 1. GLOBAL CONSTANTS
 public static class CadConstants
 {
     public const string LAY_TXT_BRG = "BEARING";
@@ -45,8 +45,9 @@ public static class CadConstants
     public const string LAY_TXT_PTNUM = "POINT_NUMBERS";
     public const string VAR_PT_COUNTER = "CADASTRE_PT_NUM";
 }
+#endregion
 
-// --- 2. SETTINGS ---
+#region 2. SETTINGS
 public class TextSettings
 {
     public string Style { get; set; } = "Standard";
@@ -114,8 +115,9 @@ public class AppSettings
         TextComm.Reset(7);
     }
 }
+#endregion
 
-// --- 3. UI THEME ---
+#region 3. UI THEME
 public static class UITheme
 {
     public static readonly Brush BackgroundBrush = new SolidColorBrush(Color.FromRgb(30, 30, 30));
@@ -147,8 +149,9 @@ public static class UITheme
     }
     public static Color GetWpfColor(short index) { try { var acCol = AcColor.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci, index); return Color.FromRgb(acCol.ColorValue.R, acCol.ColorValue.G, acCol.ColorValue.B); } catch { return Colors.Gray; } }
 }
+#endregion
 
-// --- 4. COMMAND & MATH ---
+#region 4. COMMAND & MATH
 public class LKeyinCommand
 {
     static CadastreWpfWindow? _palette = null;
@@ -164,7 +167,8 @@ public class LKeyinCommand
 
 public static class CadMath
 {
-    private static readonly Regex DmsRegex = new Regex(@"(\d+)[^0-9]?\s*(\d{1,2})[^0-9]?\s*(\d{1,2}(?:\.\d+)?)", RegexOptions.Compiled);
+    // Refactored Regex to handle more separators: space, dash, period, or dms symbols
+    private static readonly Regex DmsRegex = new Regex(@"(\d+)[^\d\.]{1,3}\s*(\d{1,2})[^\d\.]{1,3}\s*(\d{1,2}(?:\.\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public static double ParseDmsToDegrees(double rawInput)
     {
@@ -205,7 +209,9 @@ public static class CadMath
         result = 0;
         if (string.IsNullOrWhiteSpace(input)) return false;
 
-        // Try Regex for formats like "123 45 06", "123-45-06", "123d45m06s"
+        input = input.Trim();
+
+        // 1. Try advanced Regex for formats like "123 45 06", "123-45-06", "123d45m06s", "123.45.06"
         var match = DmsRegex.Match(input);
         if (match.Success)
         {
@@ -218,9 +224,21 @@ public static class CadMath
             }
         }
 
-        // Fallback: handle DDD.MMSS literal (e.g. 123.4506)
-        input = input.Replace("-", ".").Replace(" ", ".");
-        if (double.TryParse(input, out double val))
+        // 2. Fallback: handle DDD.MMSS literal (e.g. 123.4506) or plain decimal
+        // Replace common separators with period to help double.TryParse if it's a simple split
+        string cleaned = input.Replace("-", ".").Replace(" ", ".");
+        string[] parts = cleaned.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length == 3) // 123.45.06 format
+        {
+            if (double.TryParse(parts[0], out double d) && double.TryParse(parts[1], out double m) && double.TryParse(parts[2], out double s))
+            {
+                result = d + (m / 100.0) + (s / 10000.0);
+                return true;
+            }
+        }
+
+        if (double.TryParse(cleaned, out double val))
         {
             result = val;
             return true;
@@ -229,8 +247,9 @@ public static class CadMath
         return false;
     }
 }
+#endregion
 
-// --- 5. DATA MANAGER ---
+#region 5. DATA MANAGER
 public static class DwgDataManager
 {
     public static int GetNextPointNumber()
@@ -342,10 +361,12 @@ public static class DwgDataManager
         return false;
     }
 }
+#endregion
 
-// --- 6. MAIN WINDOW ---
+#region 6. MAIN WINDOW
 public class CadastreWpfWindow : System.Windows.Window
 {
+    #region Properties & State
     private struct LayerDef { public string Name; public short Color; public string Linetype; public double LinetypeScale; }
     private static readonly Dictionary<Key, LayerDef> LayerConfig = new Dictionary<Key, LayerDef>
     {
@@ -367,6 +388,7 @@ public class CadastreWpfWindow : System.Windows.Window
     private string _currentLayer = "BOUNDARY_SUBJECT";
     private bool _isInitializing = true;
     private int _lastTabIndex = 0;
+    private bool _isBusy = false;
 
     // Controls
     private TextBox txtAzimuth = null!, txtDistance = null!;
@@ -391,7 +413,9 @@ public class CadastreWpfWindow : System.Windows.Window
         public string AssociatedLayer;
     }
     private List<TextUiRow> _textUiRows = new List<TextUiRow>();
+    #endregion
 
+    #region Constructor & Cleanup
     public CadastreWpfWindow(Document doc)
     {
         _doc = doc;
@@ -410,8 +434,70 @@ public class CadastreWpfWindow : System.Windows.Window
             UpdateUIFromConfig();
             _isInitializing = false;
         };
+
+        this.Closed += CadastreWpfWindow_Closed;
     }
 
+    private void CadastreWpfWindow_Closed(object? sender, EventArgs e)
+    {
+        // Cleanup resources or event subscriptions if any were added to DocumentManager
+    }
+    #endregion
+
+    #region Centralized Action Handling
+    private void ExecuteUiAction(Action action)
+    {
+        if (_isBusy) return;
+        SetBusy(true);
+        try
+        {
+            action();
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            AcApp.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\n[AutoCAD Error] {ex.Message}");
+        }
+        catch (System.Exception ex)
+        {
+            AcApp.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\n[System Error] {ex.Message}");
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void SetBusy(bool busy)
+    {
+        _isBusy = busy;
+        if (mainTabs != null) mainTabs.IsEnabled = !busy;
+        if (txtAzimuth != null) txtAzimuth.IsEnabled = !busy;
+        if (txtDistance != null) txtDistance.IsEnabled = !busy;
+        
+        if (busy)
+        {
+            System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.WaitCursor;
+        }
+        else
+        {
+            System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
+        }
+    }
+
+    private bool EnsureQuiescent()
+    {
+        if (!_doc.Editor.IsQuiescent)
+        {
+            lblStatus.Content = "BUSY: PRESS ESC FIRST";
+            lblStatus.Foreground = Brushes.OrangeRed;
+            return false;
+        }
+        lblStatus.Foreground = Brushes.White;
+        return true;
+    }
+    #endregion
+
+    #region Initialization
     private void InitializeProjectLayers()
     {
         try
@@ -500,18 +586,9 @@ public class CadastreWpfWindow : System.Windows.Window
         this.PreviewKeyDown += Window_PreviewKeyDown;
         UpdateGuideText("PICK START POINT (PgUp or Enter)");
     }
+    #endregion
 
-    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (e.Source is TabControl && !_isInitializing)
-        {
-            if (_lastTabIndex == 1 && mainTabs.SelectedIndex != 1)
-            {
-                this.Dispatcher.BeginInvoke(new Action(() => SaveSettings(silent: true)), System.Windows.Threading.DispatcherPriority.Background);
-            }
-            _lastTabIndex = mainTabs.SelectedIndex;
-        }
-    }
+    #region Tab Building
     private object BuildInputTab()
     {
         Grid mainG = new Grid();
@@ -639,7 +716,7 @@ public class CadastreWpfWindow : System.Windows.Window
         cardO.Child = spO; pnl.Children.Add(cardO);
 
         Button btnSave = UITheme.CreateActionBtn("SAVE SETTINGS", Brushes.Teal);
-        btnSave.Click += (s, e) => SaveSettings(false);
+        btnSave.Click += (s, e) => ExecuteUiAction(() => SaveSettings(false));
         pnl.Children.Add(btnSave);
 
         PopulateComboBoxes();
@@ -684,58 +761,6 @@ public class CadastreWpfWindow : System.Windows.Window
         return g;
     }
 
-    private void SaveSettings(bool silent)
-    {
-        try
-        {
-            foreach (var r in _textUiRows)
-            {
-                r.SettingsRef.Style = r.CmbStyle.Text;
-                if (double.TryParse(r.TxtSize.Text, out double d)) r.SettingsRef.Size = d;
-                r.SettingsRef.IsMText = (r.ChkMText.IsChecked == true);
-                r.SettingsRef.Masking = (r.ChkMask.IsChecked == true);
-                r.SettingsRef.Visible = (r.ChkVisible.IsChecked == true);
-                ToggleLayerVisibility(r.AssociatedLayer, r.SettingsRef.Visible);
-            }
-
-            _config.AudioFeedback = (setChkAudio.IsChecked == true);
-            _config.AudioSound = cmbSound.Text;
-
-            AppSettings.Save(_config);
-            UpdateLayerButtons();
-
-            if (!silent)
-            {
-                PlayAudio();
-                MessageBox.Show("Saved & Applied!");
-            }
-            try { AcApp.DocumentManager.MdiActiveDocument.Editor.Regen(); } catch { }
-        }
-        catch (Autodesk.AutoCAD.Runtime.Exception ex)
-        {
-            if (!silent) MessageBox.Show("AutoCAD Error during Save: " + ex.Message);
-        }
-        catch (System.Exception ex)
-        {
-            if (!silent) MessageBox.Show("Error during Save: " + ex.Message);
-        }
-    }
-
-    private void UpdateUIFromConfig()
-    {
-        foreach (var r in _textUiRows)
-        {
-            r.CmbStyle.Text = r.SettingsRef.Style;
-            r.TxtSize.Text = r.SettingsRef.Size.ToString();
-            r.ChkMText.IsChecked = r.SettingsRef.IsMText;
-            r.ChkMask.IsChecked = r.SettingsRef.Masking;
-            r.ChkVisible.IsChecked = r.SettingsRef.Visible;
-            r.BtnColor.Background = new SolidColorBrush(UITheme.GetWpfColor(r.SettingsRef.ColorIndex));
-            r.BtnColor.Content = (r.SettingsRef.ColorIndex == 256 || r.SettingsRef.ColorIndex == 0) ? "By" : "";
-        }
-        setChkAudio.IsChecked = _config.AudioFeedback; cmbSound.SelectedItem = _config.AudioSound;
-    }
-
     private object BuildAboutTab()
     {
         ScrollViewer scroll = new ScrollViewer() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -759,7 +784,52 @@ public class CadastreWpfWindow : System.Windows.Window
 
         scroll.Content = pnl; return scroll;
     }
+    #endregion
 
+    #region Settings Logic
+    private void SaveSettings(bool silent)
+    {
+        foreach (var r in _textUiRows)
+        {
+            r.SettingsRef.Style = r.CmbStyle.Text;
+            if (double.TryParse(r.TxtSize.Text, out double d)) r.SettingsRef.Size = d;
+            r.SettingsRef.IsMText = (r.ChkMText.IsChecked == true);
+            r.SettingsRef.Masking = (r.ChkMask.IsChecked == true);
+            r.SettingsRef.Visible = (r.ChkVisible.IsChecked == true);
+            ToggleLayerVisibility(r.AssociatedLayer, r.SettingsRef.Visible);
+        }
+
+        _config.AudioFeedback = (setChkAudio.IsChecked == true);
+        _config.AudioSound = cmbSound.Text;
+
+        AppSettings.Save(_config);
+        UpdateLayerButtons();
+
+        if (!silent)
+        {
+            PlayAudio();
+            MessageBox.Show("Saved & Applied!");
+        }
+        try { AcApp.DocumentManager.MdiActiveDocument.Editor.Regen(); } catch { }
+    }
+
+    private void UpdateUIFromConfig()
+    {
+        foreach (var r in _textUiRows)
+        {
+            r.CmbStyle.Text = r.SettingsRef.Style;
+            r.TxtSize.Text = r.SettingsRef.Size.ToString();
+            r.ChkMText.IsChecked = r.SettingsRef.IsMText;
+            r.ChkMask.IsChecked = r.SettingsRef.Masking;
+            r.ChkVisible.IsChecked = r.SettingsRef.Visible;
+            r.BtnColor.Background = new SolidColorBrush(UITheme.GetWpfColor(r.SettingsRef.ColorIndex));
+            r.BtnColor.Content = (r.SettingsRef.ColorIndex == 256 || r.SettingsRef.ColorIndex == 0) ? "By" : "";
+        }
+        setChkAudio.IsChecked = _config.AudioFeedback; cmbSound.SelectedItem = _config.AudioSound;
+    }
+    #endregion
+
+    #region Calculation & Analysis
     private void CalculateArea()
     {
         if (_traversePath.Count < 2) { txtAreaInfo.Text = "Area: N/A"; return; }
@@ -772,19 +842,32 @@ public class CadastreWpfWindow : System.Windows.Window
         txtAreaInfo.Text = $"Area: {area:0.00} m²";
     }
 
-    private void SetCurrentLayer(string layerName, Button btn)
+    private void UpdateRunningMisclosure()
     {
-        _currentLayer = layerName; HighlightActiveLayer(btn); txtAzimuth.Focus();
+        if (_traversePath.Count < 2) { txtRunningClosure.Text = "Misclosure: N/A"; return; }
+        Point3d start = _traversePath[0]; Point3d end = _traversePath[_traversePath.Count - 1];
+        double mis = start.DistanceTo(end);
+        double dx = start.X - end.X; double dy = start.Y - end.Y;
+        double rad = Math.Atan2(dy, dx); double deg = 90.0 - (rad * 180.0 / Math.PI); if (deg < 0) deg += 360.0;
+        string bearing = CadMath.DegreesToDmsString(deg);
+        double perim = 0; for (int i = 0; i < _traversePath.Count - 1; i++) perim += _traversePath[i].DistanceTo(_traversePath[i + 1]);
+        double prec = (mis > 0.0001) ? Math.Round(perim / mis) : 0;
+        txtRunningClosure.Text = $"Err: {mis:0.000}m (1:{prec}) @ {bearing}";
     }
+    #endregion
 
-    private void HighlightActiveLayer(Button active)
+    #region UI & Input Handlers
+    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        Button[] btns = { btnQ, btnW, btnE, btnA, btnS, btnD };
-        foreach (var b in btns) { b.BorderThickness = new Thickness(1); b.BorderBrush = Brushes.Gray; }
-        active.BorderThickness = new Thickness(3); active.BorderBrush = Brushes.White;
+        if (e.Source is TabControl && !_isInitializing)
+        {
+            if (_lastTabIndex == 1 && mainTabs.SelectedIndex != 1)
+            {
+                this.Dispatcher.BeginInvoke(new Action(() => ExecuteUiAction(() => SaveSettings(silent: true))), System.Windows.Threading.DispatcherPriority.Background);
+            }
+            _lastTabIndex = mainTabs.SelectedIndex;
+        }
     }
-
-    private void UpdateGuideText(string text) { if (lblGuide != null) lblGuide.Text = text; }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -800,30 +883,8 @@ public class CadastreWpfWindow : System.Windows.Window
 
         if (e.Key == Key.PageUp) { e.Handled = true; TriggerCoordsWindow(); }
         else if (e.Key == Key.PageDown) { e.Handled = true; OpenRadiationForm(); }
-        else if (e.Key == Key.Insert) { e.Handled = true; AddTextComment(null); }
-        else if (e.Key == Key.Delete) { e.Handled = true; UndoLastStep(); }
-    }
-
-    private void TriggerCoordsWindow()
-    {
-        this.Hide();
-        CoordsInputWindow w = new CoordsInputWindow(); w.Owner = this;
-        bool? res = w.ShowDialog();
-        this.Show();
-        if (res == true)
-        {
-            if (w.PickRequested)
-            {
-                this.Hide();
-                PromptPointResult ppr = AcApp.DocumentManager.MdiActiveDocument.Editor.GetPoint("\nPick Start Point: ");
-                this.Show();
-                if (ppr.Status == PromptStatus.OK) SetStartPoint(ppr.Value);
-            }
-            else
-            {
-                SetStartPoint(w.ResultPoint);
-            }
-        }
+        else if (e.Key == Key.Insert) { e.Handled = true; ExecuteUiAction(() => AddTextComment(null)); }
+        else if (e.Key == Key.Delete) { e.Handled = true; ExecuteUiAction(() => UndoLastStep()); }
     }
 
     private void Input_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -845,30 +906,47 @@ public class CadastreWpfWindow : System.Windows.Window
             else
             {
                 if (sender == txtAzimuth) { txtDistance.Focus(); txtDistance.SelectAll(); }
-                else if (sender == txtDistance) ExecuteManualDraw();
+                else if (sender == txtDistance) ExecuteUiAction(() => ExecuteManualDraw());
             }
         }
     }
+    #endregion
 
-    private bool ValidateDocument()
+    #region Primary Drawing Logic
+    private void ExecuteManualDraw()
     {
-        var doc = AcApp.DocumentManager.MdiActiveDocument;
-        if (doc == null || doc != _doc)
+        if (!_hasStartPoint) { TriggerCoordsWindow(); return; }
+        if (!EnsureQuiescent()) return;
+        if (!ValidateDocument()) return;
+
+        using (DocumentLock loc = _doc.LockDocument())
+        using (Transaction tr = _doc.TransactionManager.StartTransaction())
         {
-            MessageBox.Show("Active document changed or lost. Please restart the tool in the correct document.");
-            return false;
+            BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+            BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+            Point3d newPt = DrawGeometryToDatabase(tr, btr, txtAzimuth.Text, txtDistance.Text, _currentPoint, _currentLayer);
+            
+            int currentNum = DwgDataManager.GetNextPointNumber(tr, _doc.Database) - 1;
+            tr.Commit();
+
+            _lastCreatedVertex = newPt; _currentPoint = newPt; _traversePath.Add(newPt);
+            lstHistory.Items.Insert(0, $"#{currentNum} | {txtAzimuth.Text}° | {txtDistance.Text}m");
+
+            UpdateRunningMisclosure(); CalculateArea(); PlayAudio(); PanToPoint(newPt); _doc.Editor.UpdateScreen();
+            txtAzimuth.Focus(); txtAzimuth.SelectAll();
+            UpdateGuideText("LINE ADDED. NEXT?");
         }
-        return true;
     }
 
     private void SetStartPoint(Point3d pt)
     {
+        if (!EnsureQuiescent()) return;
         if (!ValidateDocument()) return;
-        _currentPoint = pt; _lastCreatedVertex = pt; _hasStartPoint = true;
-        _undoStack.Clear(); _traversePath.Clear(); _traversePath.Add(_currentPoint);
+        
+        ExecuteUiAction(() => {
+            _currentPoint = pt; _lastCreatedVertex = pt; _hasStartPoint = true;
+            _undoStack.Clear(); _traversePath.Clear(); _traversePath.Add(_currentPoint);
 
-        try
-        {
             using (DocumentLock loc = _doc.LockDocument())
             using (Transaction tr = _doc.TransactionManager.StartTransaction())
             {
@@ -884,57 +962,26 @@ public class CadastreWpfWindow : System.Windows.Window
                 }
                 tr.Commit();
             }
-        }
-        catch (Autodesk.AutoCAD.Runtime.Exception ex)
-        {
-            MessageBox.Show("AutoCAD Error: " + ex.Message);
-        }
 
-        UpdateRunningMisclosure(); CalculateArea();
-        UpdateGuideText("ENTER AZIMUTH/DIST");
-        lblStatus.Content = "Start Set.";
-        txtAzimuth.Focus();
-        PanToPoint(pt);
-    }
-
-    private void ExecuteManualDraw()
-    {
-        if (!_hasStartPoint) { TriggerCoordsWindow(); return; }
-        if (!ValidateDocument()) return;
-
-        try
-        {
-            using (DocumentLock loc = _doc.LockDocument())
-            using (Transaction tr = _doc.TransactionManager.StartTransaction())
-            {
-                BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
-                BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                Point3d newPt = DrawGeometryToDatabase(tr, btr, txtAzimuth.Text, txtDistance.Text, _currentPoint, _currentLayer);
-                
-                int currentNum = DwgDataManager.GetNextPointNumber(tr, _doc.Database) - 1;
-                tr.Commit();
-
-                _lastCreatedVertex = newPt; _currentPoint = newPt; _traversePath.Add(newPt);
-                lstHistory.Items.Insert(0, $"#{currentNum} | {txtAzimuth.Text}° | {txtDistance.Text}m");
-
-                UpdateRunningMisclosure(); CalculateArea(); PlayAudio(); PanToPoint(newPt); _doc.Editor.UpdateScreen();
-                txtAzimuth.Focus(); txtAzimuth.SelectAll();
-                UpdateGuideText("LINE ADDED. NEXT?");
-            }
-        }
-        catch (Autodesk.AutoCAD.Runtime.Exception ex)
-        {
-            MessageBox.Show("AutoCAD Error: " + ex.Message);
-        }
-        catch (System.Exception ex) { MessageBox.Show(ex.Message); }
+            UpdateRunningMisclosure(); CalculateArea();
+            UpdateGuideText("ENTER AZIMUTH/DIST");
+            lblStatus.Content = "Start Set.";
+            txtAzimuth.Focus();
+            PanToPoint(pt);
+        });
     }
 
     private Point3d DrawGeometryToDatabase(Transaction tr, BlockTableRecord btr, string azStr, string distStr, Point3d startPt, string layer)
     {
         double rawAz, dist;
-        if (!CadMath.TryParseAzimuth(azStr, out rawAz) || !double.TryParse(distStr, out dist)) throw new System.Exception($"Invalid Data");
+        if (!CadMath.TryParseAzimuth(azStr, out rawAz) || !double.TryParse(distStr, out dist))
+        {
+            lblStatus.Content = "INVALID DATA";
+            lblStatus.Foreground = Brushes.Red;
+            throw new System.Exception($"Invalid Azimuth or Distance format.");
+        }
         
-        // Ensure layer exists before database operation, potentially requesting user input
+        // Ensure layer exists before database operation
         bool layerExists = false;
         using (Transaction checkTr = btr.Database.TransactionManager.StartTransaction())
         {
@@ -975,86 +1022,61 @@ public class CadastreWpfWindow : System.Windows.Window
         _undoStack.Push(createdEntities);
         return endPoint;
     }
+    #endregion
 
-    private void PanToPoint(Point3d target)
-    {
-        var ed = _doc.Editor;
-        using (ViewTableRecord view = ed.GetCurrentView())
-        {
-            Matrix3d matWCS2DCS = Matrix3d.PlaneToWorld(view.ViewDirection) * Matrix3d.Displacement(view.Target - Point3d.Origin) * Matrix3d.Rotation(-view.ViewTwist, view.ViewDirection, view.Target);
-            matWCS2DCS = matWCS2DCS.Inverse();
-            Point3d centerPt = target.TransformBy(matWCS2DCS);
-            view.CenterPoint = new Point2d(centerPt.X, centerPt.Y);
-            ed.SetCurrentView(view);
-        }
-    }
-
-    private void UpdateRunningMisclosure()
-    {
-        if (_traversePath.Count < 2) { txtRunningClosure.Text = "Misclosure: N/A"; return; }
-        Point3d start = _traversePath[0]; Point3d end = _traversePath[_traversePath.Count - 1];
-        double mis = start.DistanceTo(end);
-        double dx = start.X - end.X; double dy = start.Y - end.Y;
-        double rad = Math.Atan2(dy, dx); double deg = 90.0 - (rad * 180.0 / Math.PI); if (deg < 0) deg += 360.0;
-        string bearing = CadMath.DegreesToDmsString(deg);
-        double perim = 0; for (int i = 0; i < _traversePath.Count - 1; i++) perim += _traversePath[i].DistanceTo(_traversePath[i + 1]);
-        double prec = (mis > 0.0001) ? Math.Round(perim / mis) : 0;
-        txtRunningClosure.Text = $"Err: {mis:0.000}m (1:{prec}) @ {bearing}";
-    }
-
-    private void ModifyBearing(double deltaDegrees)
-    {
-        double current = 0;
-        if (double.TryParse(txtAzimuth.Text, out current))
-        {
-            double decDeg = CadMath.ParseDmsToDegrees(current);
-            decDeg += deltaDegrees; decDeg = decDeg % 360; if (decDeg < 0) decDeg += 360;
-            txtAzimuth.Text = CadMath.DegreesToDmsString(decDeg); txtAzimuth.CaretIndex = txtAzimuth.Text.Length;
-        }
-    }
-
+    #region Database Operations
     private void UndoLastStep()
     {
         if (_undoStack.Count == 0) return;
         if (!ValidateDocument()) return;
 
-        try
+        using (DocumentLock loc = _doc.LockDocument())
+        using (Transaction tr = _doc.TransactionManager.StartTransaction())
         {
-            using (DocumentLock loc = _doc.LockDocument())
-            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            List<ObjectId> stepObjects = _undoStack.Pop();
+            bool pointDeleted = false;
+            foreach (ObjectId id in stepObjects)
             {
-                List<ObjectId> stepObjects = _undoStack.Pop();
-                bool pointDeleted = false;
-                foreach (ObjectId id in stepObjects)
+                if (!id.IsErased)
                 {
-                    if (!id.IsErased)
-                    {
-                        Entity ent = (Entity)tr.GetObject(id, OpenMode.ForWrite);
-                        if (ent.Layer == CadConstants.LAY_TXT_PTNUM) pointDeleted = true;
-                        if (ent is Autodesk.AutoCAD.DatabaseServices.Line ln) { _currentPoint = ln.StartPoint; _lastCreatedVertex = ln.StartPoint; }
-                        ent.Erase();
-                    }
+                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForWrite);
+                    if (ent.Layer == CadConstants.LAY_TXT_PTNUM) pointDeleted = true;
+                    if (ent is Autodesk.AutoCAD.DatabaseServices.Line ln) { _currentPoint = ln.StartPoint; _lastCreatedVertex = ln.StartPoint; }
+                    ent.Erase();
                 }
-
-                if (pointDeleted)
-                {
-                    int current = DwgDataManager.GetNextPointNumber(tr, _doc.Database);
-                    if (current > 1) DwgDataManager.SetNextPointNumber(current - 1, tr, _doc.Database);
-                }
-
-                if (_traversePath.Count > 1) _traversePath.RemoveAt(_traversePath.Count - 1);
-                if (lstHistory.Items.Count > 0) lstHistory.Items.RemoveAt(0);
-                UpdateRunningMisclosure(); CalculateArea(); tr.Commit(); _doc.Editor.UpdateScreen();
-                lblStatus.Content = "Undo performed.";
             }
+
+            if (pointDeleted)
+            {
+                int current = DwgDataManager.GetNextPointNumber(tr, _doc.Database);
+                if (current > 1) DwgDataManager.SetNextPointNumber(current - 1, tr, _doc.Database);
+            }
+
+            if (_traversePath.Count > 1) _traversePath.RemoveAt(_traversePath.Count - 1);
+            if (lstHistory.Items.Count > 0) lstHistory.Items.RemoveAt(0);
+            UpdateRunningMisclosure(); CalculateArea(); tr.Commit(); _doc.Editor.UpdateScreen();
+            lblStatus.Content = "Undo performed.";
         }
-        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+    }
+
+    private void ToggleLayerVisibility(string layerName, bool isVisible)
+    {
+        if (!ValidateDocument()) return;
+
+        using (DocumentLock loc = _doc.LockDocument())
+        using (Transaction tr = _doc.TransactionManager.StartTransaction())
         {
-            MessageBox.Show("AutoCAD Error during Undo: " + ex.Message);
-        }
-        catch (System.Exception ex)
-        {
-            MessageBox.Show("Error during Undo: " + ex.Message);
+            LayerTable lt = (LayerTable)tr.GetObject(_doc.Database.LayerTableId, OpenMode.ForRead);
+            if (lt.Has(layerName))
+            {
+                LayerTableRecord ltr = (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForWrite);
+                ltr.IsOff = !isVisible;
+            }
+            else if (isVisible)
+            {
+                EnsureLayerExistsInternal(layerName, null, tr, _doc.Database);
+            }
+            tr.Commit();
         }
     }
 
@@ -1077,18 +1099,11 @@ public class CadastreWpfWindow : System.Windows.Window
 
         if (selectedColor != null)
         {
-            try
+            using (_doc.LockDocument())
+            using (Transaction tr = _doc.TransactionManager.StartTransaction())
             {
-                using (_doc.LockDocument())
-                using (Transaction tr = _doc.TransactionManager.StartTransaction())
-                {
-                    EnsureLayerExistsInternal(layerName, selectedColor, tr, _doc.Database);
-                    tr.Commit();
-                }
-            }
-            catch (Autodesk.AutoCAD.Runtime.Exception ex)
-            {
-                MessageBox.Show("AutoCAD Error while creating layer: " + ex.Message);
+                EnsureLayerExistsInternal(layerName, selectedColor, tr, _doc.Database);
+                tr.Commit();
             }
         }
     }
@@ -1164,8 +1179,9 @@ public class CadastreWpfWindow : System.Windows.Window
         if (tst.Has(styleName)) return tst[styleName];
         return db.Textstyle;
     }
+    #endregion
 
-    // --- FIXED AUDIO: File-Based Playback ---
+    #region Helper UI Methods
     private void PlayAudio()
     {
         if (!_config.AudioFeedback) return;
@@ -1206,34 +1222,6 @@ public class CadastreWpfWindow : System.Windows.Window
         catch
         {
             System.Console.Beep();
-        }
-    }
-
-    private void ToggleLayerVisibility(string layerName, bool isVisible)
-    {
-        if (!ValidateDocument()) return;
-
-        try
-        {
-            using (DocumentLock loc = _doc.LockDocument())
-            using (Transaction tr = _doc.TransactionManager.StartTransaction())
-            {
-                LayerTable lt = (LayerTable)tr.GetObject(_doc.Database.LayerTableId, OpenMode.ForRead);
-                if (lt.Has(layerName))
-                {
-                    LayerTableRecord ltr = (LayerTableRecord)tr.GetObject(lt[layerName], OpenMode.ForWrite);
-                    ltr.IsOff = !isVisible;
-                }
-                else if (isVisible)
-                {
-                    EnsureLayerExistsInternal(layerName, null, tr, _doc.Database);
-                }
-                tr.Commit();
-            }
-        }
-        catch (Autodesk.AutoCAD.Runtime.Exception ex)
-        {
-            MessageBox.Show("AutoCAD Error during Layer Toggle: " + ex.Message);
         }
     }
 
@@ -1289,6 +1277,57 @@ public class CadastreWpfWindow : System.Windows.Window
         UpdateBtn(btnA, LayerConfig[Key.A].Name, "A"); UpdateBtn(btnS, LayerConfig[Key.S].Name, "S"); UpdateBtn(btnD, LayerConfig[Key.D].Name, "D");
     }
 
+    private void SetCurrentLayer(string layerName, Button btn)
+    {
+        _currentLayer = layerName; HighlightActiveLayer(btn); txtAzimuth.Focus();
+    }
+
+    private void HighlightActiveLayer(Button active)
+    {
+        Button[] btns = { btnQ, btnW, btnE, btnA, btnS, btnD };
+        foreach (var b in btns) { b.BorderThickness = new Thickness(1); b.BorderBrush = Brushes.Gray; }
+        active.BorderThickness = new Thickness(3); active.BorderBrush = Brushes.White;
+    }
+
+    private void UpdateGuideText(string text) { if (lblGuide != null) lblGuide.Text = text; }
+
+    private bool ValidateDocument()
+    {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc == null || doc != _doc)
+        {
+            MessageBox.Show("Active document changed or lost. Please restart the tool in the correct document.");
+            return false;
+        }
+        return true;
+    }
+
+    private void ModifyBearing(double deltaDegrees)
+    {
+        double current = 0;
+        if (double.TryParse(txtAzimuth.Text, out current))
+        {
+            double decDeg = CadMath.ParseDmsToDegrees(current);
+            decDeg += deltaDegrees; decDeg = decDeg % 360; if (decDeg < 0) decDeg += 360;
+            txtAzimuth.Text = CadMath.DegreesToDmsString(decDeg); txtAzimuth.CaretIndex = txtAzimuth.Text.Length;
+        }
+    }
+
+    private void PanToPoint(Point3d target)
+    {
+        var ed = _doc.Editor;
+        using (ViewTableRecord view = ed.GetCurrentView())
+        {
+            Matrix3d matWCS2DCS = Matrix3d.PlaneToWorld(view.ViewDirection) * Matrix3d.Displacement(view.Target - Point3d.Origin) * Matrix3d.Rotation(-view.ViewTwist, view.ViewDirection, view.Target);
+            matWCS2DCS = matWCS2DCS.Inverse();
+            Point3d centerPt = target.TransformBy(matWCS2DCS);
+            view.CenterPoint = new Point2d(centerPt.X, centerPt.Y);
+            ed.SetCurrentView(view);
+        }
+    }
+    #endregion
+
+    #region Secondary Modal Windows
     private void AddTextComment(string? preDefinedComment)
     {
         if (!_hasStartPoint) return;
@@ -1305,26 +1344,15 @@ public class CadastreWpfWindow : System.Windows.Window
 
         if (!string.IsNullOrWhiteSpace(finalComment))
         {
-            try
+            using (DocumentLock loc = _doc.LockDocument())
+            using (Transaction tr = _doc.TransactionManager.StartTransaction())
             {
-                using (DocumentLock loc = _doc.LockDocument())
-                using (Transaction tr = _doc.TransactionManager.StartTransaction())
-                {
-                    BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
-                    BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    Entity txt = CreateText(finalComment, CadConstants.LAY_TXT_SYMB, _lastCreatedVertex, AttachmentPoint.MiddleLeft, tr, _doc.Database, _config.TextComm);
-                    ObjectId txtId = AddToDb(txt, btr, tr);
-                    if (_undoStack.Count > 0) _undoStack.Peek().Add(txtId);
-                    tr.Commit(); _doc.Editor.UpdateScreen();
-                }
-            }
-            catch (Autodesk.AutoCAD.Runtime.Exception ex)
-            {
-                MessageBox.Show("AutoCAD Error: " + ex.Message);
-            }
-            catch (System.Exception ex)
-            {
-                MessageBox.Show("Error during Comment: " + ex.Message);
+                BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+                BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                Entity txt = CreateText(finalComment, CadConstants.LAY_TXT_SYMB, _lastCreatedVertex, AttachmentPoint.MiddleLeft, tr, _doc.Database, _config.TextComm);
+                ObjectId txtId = AddToDb(txt, btr, tr);
+                if (_undoStack.Count > 0) _undoStack.Peek().Add(txtId);
+                tr.Commit(); _doc.Editor.UpdateScreen();
             }
         }
     }
@@ -1336,8 +1364,7 @@ public class CadastreWpfWindow : System.Windows.Window
         if (radWin.ShowDialog() == true)
         {
             if (!ValidateDocument()) return;
-            try
-            {
+            ExecuteUiAction(() => {
                 using (DocumentLock loc = _doc.LockDocument())
                 using (Transaction tr = _doc.TransactionManager.StartTransaction())
                 {
@@ -1357,12 +1384,7 @@ public class CadastreWpfWindow : System.Windows.Window
                     }
                     tr.Commit(); _doc.Editor.UpdateScreen();
                 }
-            }
-            catch (Autodesk.AutoCAD.Runtime.Exception ex)
-            {
-                MessageBox.Show("AutoCAD Error: " + ex.Message);
-            }
-            catch (System.Exception ex) { MessageBox.Show(ex.Message); }
+            });
             txtAzimuth.Focus(); txtAzimuth.SelectAll();
         }
     }
@@ -1373,8 +1395,33 @@ public class CadastreWpfWindow : System.Windows.Window
         cWin.Owner = this;
         if (cWin.ShowDialog() == true) { txt.Text = cWin.Result; txt.Focus(); txt.SelectAll(); }
     }
-}
 
+    private void TriggerCoordsWindow()
+    {
+        this.Hide();
+        CoordsInputWindow w = new CoordsInputWindow(); w.Owner = this;
+        bool? res = w.ShowDialog();
+        this.Show();
+        if (res == true)
+        {
+            if (w.PickRequested)
+            {
+                this.Hide();
+                PromptPointResult ppr = AcApp.DocumentManager.MdiActiveDocument.Editor.GetPoint("\nPick Start Point: ");
+                this.Show();
+                if (ppr.Status == PromptStatus.OK) SetStartPoint(ppr.Value);
+            }
+            else
+            {
+                SetStartPoint(w.ResultPoint);
+            }
+        }
+    }
+    #endregion
+}
+#endregion
+
+#region 7. SECONDARY DIALOGS
 // --- DMS CALCULATOR WINDOW ---
 public class CalculatorWindow : System.Windows.Window
 {
@@ -1525,3 +1572,4 @@ public class CommentWpfWindow : System.Windows.Window
         this.Content = root; this.Loaded += (s, e) => txtComm.Focus();
     }
 }
+#endregion
