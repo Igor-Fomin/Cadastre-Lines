@@ -69,13 +69,6 @@ public class TextSettings
 
 public class AppSettings
 {
-    public string LayQ { get; set; } = "NOT SET";
-    public string LayW { get; set; } = "BOUNDARY_SUBJECT";
-    public string LayE { get; set; } = "NOT SET";
-    public string LayA { get; set; } = "BOUNDARY_ADJOINING";
-    public string LayS { get; set; } = "CONNECTIONS";
-    public string LayD { get; set; } = "BDY_EASEMENT";
-
     public bool AudioFeedback { get; set; } = true;
     public string AudioSound { get; set; } = "Asterisk";
     public double SnapTolerance { get; set; } = 0.005;
@@ -111,12 +104,6 @@ public class AppSettings
         }
         catch { }
         return new AppSettings();
-    }
-
-    public void ResetLayers()
-    {
-        LayQ = "NOT SET"; LayW = "BOUNDARY_SUBJECT"; LayE = "NOT SET";
-        LayA = "BOUNDARY_ADJOINING"; LayS = "CONNECTIONS"; LayD = "BDY_EASEMENT";
     }
 
     public void ResetText()
@@ -359,6 +346,17 @@ public static class DwgDataManager
 // --- 6. MAIN WINDOW ---
 public class CadastreWpfWindow : System.Windows.Window
 {
+    private struct LayerDef { public string Name; public short Color; public string Linetype; public double LinetypeScale; }
+    private static readonly Dictionary<Key, LayerDef> LayerConfig = new Dictionary<Key, LayerDef>
+    {
+        { Key.Q, new LayerDef { Name = "BOUNDARY_SUBJECT", Color = 4, Linetype = "Continuous", LinetypeScale = 1.0 } },
+        { Key.W, new LayerDef { Name = "BOUNDARY_ADJOINING", Color = 2, Linetype = "Continuous", LinetypeScale = 1.0 } },
+        { Key.E, new LayerDef { Name = "CONNECTIONS", Color = 1, Linetype = "DASHED", LinetypeScale = 0.3 } },
+        { Key.A, new LayerDef { Name = "BDY_EASEMENT", Color = 2, Linetype = "DASHED", LinetypeScale = 0.5 } },
+        { Key.S, new LayerDef { Name = "ADDITIONAL_1", Color = 6, Linetype = "Continuous", LinetypeScale = 1.0 } },
+        { Key.D, new LayerDef { Name = "ADDITIONAL_2", Color = 3, Linetype = "Continuous", LinetypeScale = 1.0 } }
+    };
+
     private Document _doc;
     private Point3d _currentPoint;
     private Point3d _lastCreatedVertex;
@@ -383,7 +381,6 @@ public class CadastreWpfWindow : System.Windows.Window
     private Button btnQ = null!, btnW = null!, btnE = null!, btnA = null!, btnS = null!, btnD = null!;
 
     // Settings UI
-    private ComboBox cmbLayQ = null!, cmbLayW = null!, cmbLayE = null!, cmbLayA = null!, cmbLayS = null!, cmbLayD = null!;
     private ComboBox cmbSound = null!;
     private CheckBox setChkAudio = null!;
 
@@ -399,16 +396,62 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         _doc = doc;
         _config = AppSettings.Load();
-        _currentLayer = _config.LayW;
-
+        
         InitializeCustomUI();
+        InitializeProjectLayers();
         UpdateLayerButtons();
+
+        // Default to 'W' layer def from config
+        _currentLayer = LayerConfig[Key.W].Name;
+        HighlightActiveLayer(btnW);
 
         this.Loaded += (s, e) => {
             PopulateComboBoxes();
             UpdateUIFromConfig();
             _isInitializing = false;
         };
+    }
+
+    private void InitializeProjectLayers()
+    {
+        try
+        {
+            using (DocumentLock loc = _doc.LockDocument())
+            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            {
+                LayerTable lt = (LayerTable)tr.GetObject(_doc.Database.LayerTableId, OpenMode.ForRead);
+                LinetypeTable ltt = (LinetypeTable)tr.GetObject(_doc.Database.LinetypeTableId, OpenMode.ForRead);
+
+                foreach (var entry in LayerConfig.Values)
+                {
+                    if (!lt.Has(entry.Name))
+                    {
+                        lt.UpgradeOpen();
+                        LayerTableRecord ltr = new LayerTableRecord();
+                        ltr.Name = entry.Name;
+                        ltr.Color = AcColor.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci, entry.Color);
+
+                        if (entry.Linetype != "Continuous")
+                        {
+                            if (!ltt.Has(entry.Linetype))
+                            {
+                                try { _doc.Database.LoadLineTypeFile(entry.Linetype, "acad.lin"); }
+                                catch { _doc.Editor.WriteMessage($"\n[Error] Could not load linetype {entry.Linetype}. Ensure acad.lin is in search path."); }
+                            }
+                            if (ltt.Has(entry.Linetype)) ltr.LinetypeObjectId = ltt[entry.Linetype];
+                        }
+
+                        lt.Add(ltr);
+                        tr.AddNewlyCreatedDBObject(ltr, true);
+                    }
+                }
+                tr.Commit();
+            }
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception ex)
+        {
+            _doc.Editor.WriteMessage($"\n[Critical] Layer initialization failed: {ex.Message}");
+        }
     }
 
     private void InitializeCustomUI()
@@ -454,7 +497,6 @@ public class CadastreWpfWindow : System.Windows.Window
         Grid.SetRow(st, 3); mainGrid.Children.Add(st);
 
         this.Content = mainGrid;
-        HighlightActiveLayer(btnW);
         this.PreviewKeyDown += Window_PreviewKeyDown;
         UpdateGuideText("PICK START POINT (PgUp or Enter)");
     }
@@ -517,12 +559,12 @@ public class CadastreWpfWindow : System.Windows.Window
         g.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
         for (int i = 0; i < 3; i++) g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
-        btnQ = UITheme.CreateLayerBtn("Q"); btnQ.Click += (s, e) => SetCurrentLayer(_config.LayQ, btnQ);
-        btnW = UITheme.CreateLayerBtn("W"); btnW.Click += (s, e) => SetCurrentLayer(_config.LayW, btnW);
-        btnE = UITheme.CreateLayerBtn("E"); btnE.Click += (s, e) => SetCurrentLayer(_config.LayE, btnE);
-        btnA = UITheme.CreateLayerBtn("A"); btnA.Click += (s, e) => SetCurrentLayer(_config.LayA, btnA);
-        btnS = UITheme.CreateLayerBtn("S"); btnS.Click += (s, e) => SetCurrentLayer(_config.LayS, btnS);
-        btnD = UITheme.CreateLayerBtn("D"); btnD.Click += (s, e) => SetCurrentLayer(_config.LayD, btnD);
+        btnQ = UITheme.CreateLayerBtn("Q"); btnQ.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.Q].Name, btnQ);
+        btnW = UITheme.CreateLayerBtn("W"); btnW.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.W].Name, btnW);
+        btnE = UITheme.CreateLayerBtn("E"); btnE.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.E].Name, btnE);
+        btnA = UITheme.CreateLayerBtn("A"); btnA.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.A].Name, btnA);
+        btnS = UITheme.CreateLayerBtn("S"); btnS.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.S].Name, btnS);
+        btnD = UITheme.CreateLayerBtn("D"); btnD.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.D].Name, btnD);
 
         Grid.SetRow(btnQ, 0); Grid.SetColumn(btnQ, 0); Grid.SetRow(btnW, 0); Grid.SetColumn(btnW, 1); Grid.SetRow(btnE, 0); Grid.SetColumn(btnE, 2);
         Grid.SetRow(btnA, 1); Grid.SetColumn(btnA, 0); Grid.SetRow(btnS, 1); Grid.SetColumn(btnS, 1); Grid.SetRow(btnD, 1); Grid.SetColumn(btnD, 2);
@@ -541,36 +583,23 @@ public class CadastreWpfWindow : System.Windows.Window
         StackPanel pnl = new StackPanel() { Margin = new Thickness(15) };
 
         Border cardL = UITheme.CreateCard(); StackPanel spL = new StackPanel();
-        spL.Children.Add(UITheme.CreateLabel("LAYER MAPPING (Click Color to Create/Set)"));
+        spL.Children.Add(UITheme.CreateLabel("PRIMARY LAYER MAPPINGS (FIXED)"));
         Grid gl = new Grid();
         gl.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); gl.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
         for (int i = 0; i < 3; i++) gl.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
-        cmbLayQ = UITheme.CreateLayerCombo();
-        cmbLayW = UITheme.CreateLayerCombo();
-        cmbLayE = UITheme.CreateLayerCombo();
-        cmbLayA = UITheme.CreateLayerCombo();
-        cmbLayS = UITheme.CreateLayerCombo();
-        cmbLayD = UITheme.CreateLayerCombo();
-
-        void AddL(ComboBox cb, string lbl, int r, int c)
+        void AddFixedL(string key, string name, int r, int c)
         {
             StackPanel sp = new StackPanel();
-            sp.Children.Add(new Label() { Content = lbl, Foreground = Brushes.Gray });
-            Grid gIn = new Grid(); gIn.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gIn.ColumnDefinitions.Add(new ColumnDefinition() { Width = GridLength.Auto });
-            Button bCol = new Button() { Content = "C", Width = 25, Height = 25, Margin = new Thickness(2, 0, 0, 0) };
-            bCol.Click += (s, e) => { if (!string.IsNullOrWhiteSpace(cb.Text)) EnsureLayerExists(cb.Text); };
-            Grid.SetColumn(cb, 0); Grid.SetColumn(bCol, 1); gIn.Children.Add(cb); gIn.Children.Add(bCol);
-            sp.Children.Add(gIn);
+            sp.Children.Add(new Label() { Content = $"Key {key}", Foreground = Brushes.Gray });
+            TextBox tb = UITheme.CreateInputBox(); tb.Text = name; tb.IsEnabled = false; tb.Opacity = 0.6; tb.Height = 25;
+            sp.Children.Add(tb);
             Grid.SetRow(sp, r); Grid.SetColumn(sp, c); gl.Children.Add(sp);
         }
-        AddL(cmbLayQ, "Key Q", 0, 0); AddL(cmbLayW, "Key W", 0, 1); AddL(cmbLayE, "Key E", 0, 2);
-        AddL(cmbLayA, "Key A", 1, 0); AddL(cmbLayS, "Key S", 1, 1); AddL(cmbLayD, "Key D", 1, 2);
+        AddFixedL("Q", LayerConfig[Key.Q].Name, 0, 0); AddFixedL("W", LayerConfig[Key.W].Name, 0, 1); AddFixedL("E", LayerConfig[Key.E].Name, 0, 2);
+        AddFixedL("A", LayerConfig[Key.A].Name, 1, 0); AddFixedL("S", LayerConfig[Key.S].Name, 1, 1); AddFixedL("D", LayerConfig[Key.D].Name, 1, 2);
 
         spL.Children.Add(gl);
-        Button btnResetL = UITheme.CreateActionBtn("RESET LAYERS TO DEFAULT", Brushes.DimGray);
-        btnResetL.Click += (s, e) => { _config.ResetLayers(); UpdateUIFromConfig(); };
-        spL.Children.Add(btnResetL);
         cardL.Child = spL; pnl.Children.Add(cardL);
 
         Border cardT = UITheme.CreateCard(); StackPanel spT = new StackPanel();
@@ -669,8 +698,6 @@ public class CadastreWpfWindow : System.Windows.Window
                 ToggleLayerVisibility(r.AssociatedLayer, r.SettingsRef.Visible);
             }
 
-            _config.LayQ = cmbLayQ.Text; _config.LayW = cmbLayW.Text; _config.LayE = cmbLayE.Text;
-            _config.LayA = cmbLayA.Text; _config.LayS = cmbLayS.Text; _config.LayD = cmbLayD.Text;
             _config.AudioFeedback = (setChkAudio.IsChecked == true);
             _config.AudioSound = cmbSound.Text;
 
@@ -696,9 +723,6 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void UpdateUIFromConfig()
     {
-        cmbLayQ.Text = _config.LayQ; cmbLayW.Text = _config.LayW; cmbLayE.Text = _config.LayE;
-        cmbLayA.Text = _config.LayA; cmbLayS.Text = _config.LayS; cmbLayD.Text = _config.LayD;
-
         foreach (var r in _textUiRows)
         {
             r.CmbStyle.Text = r.SettingsRef.Style;
@@ -750,7 +774,6 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void SetCurrentLayer(string layerName, Button btn)
     {
-        if (layerName == "NOT SET") return;
         _currentLayer = layerName; HighlightActiveLayer(btn); txtAzimuth.Focus();
     }
 
@@ -767,12 +790,14 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         if (mainTabs.SelectedIndex == 1) return;
 
-        if (e.Key == Key.Q) { SetCurrentLayer(_config.LayQ, btnQ); e.Handled = true; }
-        if (e.Key == Key.W) { SetCurrentLayer(_config.LayW, btnW); e.Handled = true; }
-        if (e.Key == Key.E) { SetCurrentLayer(_config.LayE, btnE); e.Handled = true; }
-        if (e.Key == Key.A) { SetCurrentLayer(_config.LayA, btnA); e.Handled = true; }
-        if (e.Key == Key.S) { SetCurrentLayer(_config.LayS, btnS); e.Handled = true; }
-        if (e.Key == Key.D) { SetCurrentLayer(_config.LayD, btnD); e.Handled = true; }
+        if (LayerConfig.ContainsKey(e.Key))
+        {
+            var def = LayerConfig[e.Key];
+            Button b = e.Key switch { Key.Q => btnQ, Key.W => btnW, Key.E => btnE, Key.A => btnA, Key.S => btnS, Key.D => btnD, _ => btnW };
+            SetCurrentLayer(def.Name, b);
+            e.Handled = true;
+        }
+
         if (e.Key == Key.PageUp) { e.Handled = true; TriggerCoordsWindow(); }
         else if (e.Key == Key.PageDown) { e.Handled = true; OpenRadiationForm(); }
         else if (e.Key == Key.Insert) { e.Handled = true; AddTextComment(null); }
@@ -925,7 +950,16 @@ public class CadastreWpfWindow : System.Windows.Window
         endPoint = CheckSnapping(endPoint, tr, btr);
         List<ObjectId> createdEntities = new List<ObjectId>();
         Autodesk.AutoCAD.DatabaseServices.Line ln = new Autodesk.AutoCAD.DatabaseServices.Line(startPt, endPoint);
-        ln.Layer = layer; createdEntities.Add(AddToDb(ln, btr, tr));
+        ln.Layer = layer;
+
+        // Apply linetype scale from hardcoded config
+        var configEntry = LayerConfig.Values.FirstOrDefault(ld => ld.Name == layer);
+        if (!string.IsNullOrEmpty(configEntry.Name))
+        {
+            ln.LinetypeScale = configEntry.LinetypeScale;
+        }
+
+        createdEntities.Add(AddToDb(ln, btr, tr));
         createdEntities.AddRange(CreateAnnotatedText(btr, tr, ln, rawAz, dist, cadAngleRad));
 
         // FIX: Check if number exists before creating
@@ -1219,8 +1253,6 @@ public class CadastreWpfWindow : System.Windows.Window
                 tr.Commit();
             }
             layers.Sort(); styles.Sort();
-            var combos = new[] { cmbLayQ, cmbLayW, cmbLayE, cmbLayA, cmbLayS, cmbLayD };
-            foreach (var c in combos) if (c != null) c.ItemsSource = layers;
             foreach (var r in _textUiRows) if (r.CmbStyle != null) r.CmbStyle.ItemsSource = styles;
         }
         catch { }
@@ -1253,8 +1285,8 @@ public class CadastreWpfWindow : System.Windows.Window
             }
             catch { }
         }
-        UpdateBtn(btnQ, _config.LayQ, "Q"); UpdateBtn(btnW, _config.LayW, "W"); UpdateBtn(btnE, _config.LayE, "E");
-        UpdateBtn(btnA, _config.LayA, "A"); UpdateBtn(btnS, _config.LayS, "S"); UpdateBtn(btnD, _config.LayD, "D");
+        UpdateBtn(btnQ, LayerConfig[Key.Q].Name, "Q"); UpdateBtn(btnW, LayerConfig[Key.W].Name, "W"); UpdateBtn(btnE, LayerConfig[Key.E].Name, "E");
+        UpdateBtn(btnA, LayerConfig[Key.A].Name, "A"); UpdateBtn(btnS, LayerConfig[Key.S].Name, "S"); UpdateBtn(btnD, LayerConfig[Key.D].Name, "D");
     }
 
     private void AddTextComment(string? preDefinedComment)
@@ -1289,6 +1321,10 @@ public class CadastreWpfWindow : System.Windows.Window
             catch (Autodesk.AutoCAD.Runtime.Exception ex)
             {
                 MessageBox.Show("AutoCAD Error: " + ex.Message);
+            }
+            catch (System.Exception ex)
+            {
+                MessageBox.Show("Error during Comment: " + ex.Message);
             }
         }
     }
