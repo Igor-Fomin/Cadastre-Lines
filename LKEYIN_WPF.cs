@@ -155,7 +155,7 @@ public static class UITheme
 public class LKeyinCommand
 {
     static CadastreWpfWindow? _palette = null;
-    [CommandMethod("LKEYINWPF", CommandFlags.Session)]
+    [CommandMethod("LKY", CommandFlags.Session)]
     public void RunLKeyin()
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
@@ -396,7 +396,6 @@ public class CadastreWpfWindow : System.Windows.Window
     private TextBlock txtRunningClosure = null!;
     private TextBlock txtAreaInfo = null!;
     private TextBlock lblGuide = null!;
-    private ListBox lstHistory = null!;
     private TabControl mainTabs = null!;
 
     // Buttons
@@ -592,16 +591,17 @@ public class CadastreWpfWindow : System.Windows.Window
     private object BuildInputTab()
     {
         Grid mainG = new Grid();
-        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
-        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // Guide
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // Data Card
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // Layer Card
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // Quick Actions Card
         mainG.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) });
-        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
 
-        lblGuide = new TextBlock() { Text = "START", Foreground = UITheme.GuideColor, FontSize = 16, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 5) };
+        lblGuide = new TextBlock() { Text = "START", Foreground = UITheme.GuideColor, FontSize = 16, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 15) };
         Grid.SetRow(lblGuide, 0); mainG.Children.Add(lblGuide);
 
-        StackPanel inputPnl = new StackPanel() { Margin = new Thickness(15) };
-        Border cardData = UITheme.CreateCard();
+        // --- 1. DATA ENTRY CARD ---
+        Border cardData = UITheme.CreateCard(); cardData.Margin = new Thickness(15, 0, 15, 15);
         StackPanel spData = new StackPanel();
 
         Grid gAz = new Grid(); gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
@@ -619,16 +619,11 @@ public class CadastreWpfWindow : System.Windows.Window
         spData.Children.Add(UITheme.CreateLabel("AZIMUTH (DDD.MMSS)")); spData.Children.Add(gAz);
         spData.Children.Add(new Border() { Height = 10 });
         spData.Children.Add(UITheme.CreateLabel("DISTANCE (m)")); spData.Children.Add(gDist);
-        cardData.Child = spData; inputPnl.Children.Add(cardData);
-        Grid.SetRow(inputPnl, 1); mainG.Children.Add(inputPnl);
+        cardData.Child = spData;
+        Grid.SetRow(cardData, 1); mainG.Children.Add(cardData);
 
-        Border cardHist = UITheme.CreateCard(); cardHist.Margin = new Thickness(15, 0, 15, 15);
-        lstHistory = new ListBox() { Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.LightGray, FontSize = 11, Focusable = false };
-        cardHist.Child = lstHistory;
-        Grid.SetRow(cardHist, 2); mainG.Children.Add(cardHist);
-
-        StackPanel layPnl = new StackPanel() { Margin = new Thickness(15, 0, 15, 15) };
-        Border cardLay = UITheme.CreateCard();
+        // --- 2. LAYER SELECTION CARD ---
+        Border cardLay = UITheme.CreateCard(); cardLay.Margin = new Thickness(15, 0, 15, 15);
         StackPanel spLay = new StackPanel();
         spLay.Children.Add(UITheme.CreateLabel("ACTIVE LAYER (QWE ASD)"));
         Grid g = new Grid();
@@ -648,8 +643,54 @@ public class CadastreWpfWindow : System.Windows.Window
 
         g.Children.Add(btnQ); g.Children.Add(btnW); g.Children.Add(btnE);
         g.Children.Add(btnA); g.Children.Add(btnS); g.Children.Add(btnD);
-        spLay.Children.Add(g); cardLay.Child = spLay; layPnl.Children.Add(cardLay);
-        Grid.SetRow(layPnl, 3); mainG.Children.Add(layPnl);
+        spLay.Children.Add(g); cardLay.Child = spLay;
+        Grid.SetRow(cardLay, 2); mainG.Children.Add(cardLay);
+
+        // --- 3. QUICK ACTIONS CARD ---
+        Border cardQuick = UITheme.CreateCard(); cardQuick.Margin = new Thickness(15, 0, 15, 15);
+        StackPanel spQuick = new StackPanel();
+        spQuick.Children.Add(UITheme.CreateLabel("QUICK ACTIONS"));
+
+        Grid gActions = new Grid();
+        gActions.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+        gActions.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+        for (int i = 0; i < 4; i++) gActions.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+
+        Button CreateQuickBtn(string text, string tip, Action action)
+        {
+            Button b = new Button() { Content = text, Height = 35, Margin = new Thickness(2), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
+            b.Click += (s, e) => { action(); txtAzimuth.Focus(); txtAzimuth.SelectAll(); };
+            return b;
+        }
+
+        // Row 0: Workflow Tools
+        Button bUndo = CreateQuickBtn("Undo", "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
+        Button bCoords = CreateQuickBtn("Coords", "Set start coordinates (PGUP)", () => TriggerCoordsWindow());
+        Button bRad = CreateQuickBtn("Radiate", "Draw radiating line (PGDN)", () => OpenRadiationForm());
+        Button bComm = CreateQuickBtn("Comment", "Add text comment (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
+
+        Grid.SetRow(bUndo, 0); Grid.SetColumn(bUndo, 0);
+        Grid.SetRow(bCoords, 0); Grid.SetColumn(bCoords, 1);
+        Grid.SetRow(bRad, 0); Grid.SetColumn(bRad, 2);
+        Grid.SetRow(bComm, 0); Grid.SetColumn(bComm, 3);
+
+        // Row 1: Bearing Math
+        Button bP90 = CreateQuickBtn("+90\u00B0", "Rotate bearing +90\u00B0 (UP)", () => ModifyBearing(90));
+        Button bM90 = CreateQuickBtn("-90\u00B0", "Rotate bearing -90\u00B0 (DOWN)", () => ModifyBearing(-90));
+        Button bP180 = CreateQuickBtn("+180\u00B0", "Rotate bearing +180\u00B0 (RIGHT)", () => ModifyBearing(180));
+        Button bM180 = CreateQuickBtn("-180\u00B0", "Rotate bearing -180\u00B0 (LEFT)", () => ModifyBearing(-180));
+
+        Grid.SetRow(bP90, 1); Grid.SetColumn(bP90, 0);
+        Grid.SetRow(bM90, 1); Grid.SetColumn(bM90, 1);
+        Grid.SetRow(bP180, 1); Grid.SetColumn(bP180, 2);
+        Grid.SetRow(bM180, 1); Grid.SetColumn(bM180, 3);
+
+        gActions.Children.Add(bUndo); gActions.Children.Add(bCoords); gActions.Children.Add(bRad); gActions.Children.Add(bComm);
+        gActions.Children.Add(bP90); gActions.Children.Add(bM90); gActions.Children.Add(bP180); gActions.Children.Add(bM180);
+
+        spQuick.Children.Add(gActions);
+        cardQuick.Child = spQuick;
+        Grid.SetRow(cardQuick, 3); mainG.Children.Add(cardQuick);
 
         return mainG;
     }
@@ -658,26 +699,6 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         ScrollViewer scroll = new ScrollViewer() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         StackPanel pnl = new StackPanel() { Margin = new Thickness(15) };
-
-        Border cardL = UITheme.CreateCard(); StackPanel spL = new StackPanel();
-        spL.Children.Add(UITheme.CreateLabel("PRIMARY LAYER MAPPINGS (FIXED)"));
-        Grid gl = new Grid();
-        gl.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); gl.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
-        for (int i = 0; i < 3; i++) gl.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
-
-        void AddFixedL(string key, string name, int r, int c)
-        {
-            StackPanel sp = new StackPanel();
-            sp.Children.Add(new Label() { Content = $"Key {key}", Foreground = Brushes.Gray });
-            TextBox tb = UITheme.CreateInputBox(); tb.Text = name; tb.IsEnabled = false; tb.Opacity = 0.6; tb.Height = 25;
-            sp.Children.Add(tb);
-            Grid.SetRow(sp, r); Grid.SetColumn(sp, c); gl.Children.Add(sp);
-        }
-        AddFixedL("Q", LayerConfig[Key.Q].Name, 0, 0); AddFixedL("W", LayerConfig[Key.W].Name, 0, 1); AddFixedL("E", LayerConfig[Key.E].Name, 0, 2);
-        AddFixedL("A", LayerConfig[Key.A].Name, 1, 0); AddFixedL("S", LayerConfig[Key.S].Name, 1, 1); AddFixedL("D", LayerConfig[Key.D].Name, 1, 2);
-
-        spL.Children.Add(gl);
-        cardL.Child = spL; pnl.Children.Add(cardL);
 
         Border cardT = UITheme.CreateCard(); StackPanel spT = new StackPanel();
         spT.Children.Add(UITheme.CreateLabel("TEXT CONFIGURATION"));
@@ -930,7 +951,6 @@ public class CadastreWpfWindow : System.Windows.Window
             tr.Commit();
 
             _lastCreatedVertex = newPt; _currentPoint = newPt; _traversePath.Add(newPt);
-            lstHistory.Items.Insert(0, $"#{currentNum} | {txtAzimuth.Text}° | {txtDistance.Text}m");
 
             UpdateRunningMisclosure(); CalculateArea(); PlayAudio(); PanToPoint(newPt); _doc.Editor.UpdateScreen();
             txtAzimuth.Focus(); txtAzimuth.SelectAll();
@@ -1053,7 +1073,6 @@ public class CadastreWpfWindow : System.Windows.Window
             }
 
             if (_traversePath.Count > 1) _traversePath.RemoveAt(_traversePath.Count - 1);
-            if (lstHistory.Items.Count > 0) lstHistory.Items.RemoveAt(0);
             UpdateRunningMisclosure(); CalculateArea(); tr.Commit(); _doc.Editor.UpdateScreen();
             lblStatus.Content = "Undo performed.";
         }
@@ -1309,7 +1328,13 @@ public class CadastreWpfWindow : System.Windows.Window
         {
             double decDeg = CadMath.ParseDmsToDegrees(current);
             decDeg += deltaDegrees; decDeg = decDeg % 360; if (decDeg < 0) decDeg += 360;
-            txtAzimuth.Text = CadMath.DegreesToDmsString(decDeg); txtAzimuth.CaretIndex = txtAzimuth.Text.Length;
+            txtAzimuth.Text = CadMath.DegreesToDmsString(decDeg);
+            
+            lblStatus.Content = $"Bearing Modified: {deltaDegrees}\u00B0";
+            lblStatus.Foreground = Brushes.White;
+
+            txtAzimuth.Focus();
+            txtAzimuth.SelectAll();
         }
     }
 
