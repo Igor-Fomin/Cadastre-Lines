@@ -571,7 +571,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         Border footer = new Border() { Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)), Padding = new Thickness(5) };
         StackPanel fs = new StackPanel() { HorizontalAlignment = HorizontalAlignment.Center };
-        fs.Children.Add(UITheme.CreateFooterText("PGUP: Coords | PGDN: Radiate | INS: Comment | DEL: Undo", Brushes.WhiteSmoke));
+        fs.Children.Add(UITheme.CreateFooterText("PGUP: Coords | PGDN: Side Shot | INS: Comment | DEL: Undo", Brushes.WhiteSmoke));
         fs.Children.Add(UITheme.CreateFooterText("ARROWS: \u00B1180\u00B0 / \u00B190\u00B0 | QWE-ASD: Layers (Input Tab Only)", Brushes.LightGray));
         footer.Child = fs;
         Grid.SetRow(footer, 2); mainGrid.Children.Add(footer);
@@ -664,7 +664,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         Button bUndo = CreateQuickBtn("\u21B2 Undo", "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
         Button bCoords = CreateQuickBtn("\ud83d\udccd Coords", "Set/Pick Start Coordinates (PGUP)", () => TriggerCoordsWindow());
-        Button bRad = CreateQuickBtn("\u2600 Radiate", "Open Radiation/Offset Menu (PGDN)", () => OpenRadiationForm());
+        Button bRad = CreateQuickBtn("\u2600 Side Shot", "Open Side Shot/Offset Menu (PGDN)", () => OpenSideShotForm());
         Button bComm = CreateQuickBtn("\ud83d\udcac Comment", "Add Text Comment/Symbol (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
 
         Grid.SetColumn(bUndo, 0); Grid.SetColumn(bCoords, 1); Grid.SetColumn(bRad, 2); Grid.SetColumn(bComm, 3);
@@ -803,7 +803,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         pnl.Children.Add(Header("HOTKEYS"));
         pnl.Children.Add(Bullet("PgUp: Start Point Menu"));
-        pnl.Children.Add(Bullet("PgDn: Radiation Menu"));
+        pnl.Children.Add(Bullet("PgDn: Side Shot Menu"));
         pnl.Children.Add(Bullet("Insert: Add Comment"));
         pnl.Children.Add(Bullet("Delete: Undo Last"));
         pnl.Children.Add(Bullet("Arrows: Rotate Bearing"));
@@ -908,7 +908,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
 
         if (e.Key == Key.PageUp) { e.Handled = true; TriggerCoordsWindow(); }
-        else if (e.Key == Key.PageDown) { e.Handled = true; OpenRadiationForm(); }
+        else if (e.Key == Key.PageDown) { e.Handled = true; OpenSideShotForm(); }
         else if (e.Key == Key.Insert) { e.Handled = true; ExecuteUiAction(() => AddTextComment(null)); }
         else if (e.Key == Key.Delete) { e.Handled = true; ExecuteUiAction(() => UndoLastStep()); }
     }
@@ -1387,11 +1387,11 @@ public class CadastreWpfWindow : System.Windows.Window
         }
     }
 
-    private void OpenRadiationForm()
+    private void OpenSideShotForm()
     {
-        RadiationWpfWindow radWin = new RadiationWpfWindow();
-        radWin.Owner = this;
-        if (radWin.ShowDialog() == true)
+        SideShotWpfWindow ssWin = new SideShotWpfWindow();
+        ssWin.Owner = this;
+        if (ssWin.ShowDialog() == true)
         {
             if (!ValidateDocument()) return;
             ExecuteUiAction(() => {
@@ -1400,15 +1400,15 @@ public class CadastreWpfWindow : System.Windows.Window
                 {
                     BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                     BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    DrawGeometryToDatabase(tr, btr, radWin.Azimuth, radWin.Distance, _currentPoint, _currentLayer);
-                    if (!string.IsNullOrEmpty(radWin.Comment))
+                    DrawGeometryToDatabase(tr, btr, ssWin.Azimuth, ssWin.Distance, _currentPoint, _currentLayer);
+                    if (!string.IsNullOrEmpty(ssWin.Comment))
                     {
-                        double rawAz; CadMath.TryParseAzimuth(radWin.Azimuth, out rawAz);
-                        double dist = double.Parse(radWin.Distance);
+                        double rawAz; CadMath.TryParseAzimuth(ssWin.Azimuth, out rawAz);
+                        double dist = double.Parse(ssWin.Distance);
                         double angleDeg = CadMath.ParseDmsToDegrees(rawAz);
                         double rad = (90.0 - angleDeg) * (Math.PI / 180.0);
                         Point3d endPt = new Point3d(_currentPoint.X + (dist * Math.Cos(rad)), _currentPoint.Y + (dist * Math.Sin(rad)), _currentPoint.Z);
-                        Entity txt = CreateText(radWin.Comment, CadConstants.LAY_TXT_SYMB, endPt, AttachmentPoint.MiddleLeft, tr, _doc.Database, _config.TextComm);
+                        Entity txt = CreateText(ssWin.Comment, CadConstants.LAY_TXT_SYMB, endPt, AttachmentPoint.MiddleLeft, tr, _doc.Database, _config.TextComm);
                         ObjectId txtId = AddToDb(txt, btr, tr);
                         if (_undoStack.Count > 0) _undoStack.Peek().Add(txtId);
                     }
@@ -1539,18 +1539,18 @@ public class CoordsInputWindow : System.Windows.Window
     }
 }
 
-public class RadiationWpfWindow : System.Windows.Window
+public class SideShotWpfWindow : System.Windows.Window
 {
     public string Azimuth => txtAz.Text; public string Distance => txtDist.Text; public string Comment => txtComm.Text;
     private TextBox txtAz = null!, txtDist = null!, txtComm = null!;
-    public RadiationWpfWindow()
+    public SideShotWpfWindow()
     {
-        this.Title = "RADIATION"; this.Width = 600; this.Height = 600;
+        this.Title = "SIDE SHOT"; this.Width = 600; this.Height = 600;
         this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this.Background = UITheme.BackgroundBrush; this.ResizeMode = ResizeMode.NoResize;
         Grid root = new Grid(); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) }); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
         Border header = new Border() { Background = UITheme.CardBrush, Padding = new Thickness(15) };
-        header.Child = new TextBlock() { Text = "RADIATION", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center };
+        header.Child = new TextBlock() { Text = "SIDE SHOT", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center };
         Grid.SetRow(header, 0); root.Children.Add(header);
 
         Border card = UITheme.CreateCard(); card.Margin = new Thickness(20); StackPanel pnl = new StackPanel();
