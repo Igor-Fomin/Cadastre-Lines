@@ -167,12 +167,9 @@ public class LKeyinCommand
 
 public static class CadMath
 {
-    // Refactored Regex to handle more separators: space, dash, period, or dms symbols
-    private static readonly Regex DmsRegex = new Regex(@"(\d+)[^\d\.]{1,3}\s*(\d{1,2})[^\d\.]{1,3}\s*(\d{1,2}(?:\.\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
     public static double ParseDmsToDegrees(double rawInput)
     {
-        // rawInput is typically in DDD.MMSS format (e.g. 123.4506)
+        // rawInput is in DDD.MMSS format (e.g. 123.4506)
         int d = (int)rawInput;
         double ms = Math.Round((rawInput - d) * 10000, 4);
         int m = (int)(ms / 100);
@@ -182,11 +179,19 @@ public static class CadMath
 
     public static string DegreesToDmsString(double decimalDegrees)
     {
+        decimalDegrees = decimalDegrees % 360;
+        if (decimalDegrees < 0) decimalDegrees += 360;
+
         int d = (int)decimalDegrees;
         double remainder = (decimalDegrees - d) * 60.0;
         int m = (int)remainder;
-        double s = (remainder - m) * 60.0;
-        return $"{d}.{m:00}{s:00.##}".Replace(".00", "").Replace(".", "");
+        double s = Math.Round((remainder - m) * 60.0);
+        
+        if (s >= 60) { s = 0; m++; }
+        if (m >= 60) { m = 0; d++; }
+        d = d % 360;
+
+        return $"{d}.{m:00}{s:00}";
     }
 
     public static string DmsToString(double dmsValue) { return dmsValue.ToString("0.0000"); }
@@ -195,53 +200,25 @@ public static class CadMath
     {
         double deg1 = ParseDmsToDegrees(dms1); double deg2 = ParseDmsToDegrees(dms2);
         double resDeg = add ? (deg1 + deg2) : (deg1 - deg2);
-        resDeg = resDeg % 360; if (resDeg < 0) resDeg += 360;
-        
-        int d = (int)resDeg;
-        double rem = (resDeg - d) * 60.0;
-        int m = (int)rem;
-        double s = (rem - m) * 60.0;
-        return double.Parse($"{d}.{m:00}{Math.Round(s):00}");
+        return double.Parse(DegreesToDmsString(resDeg).Replace(".", "")); // Internal math still expects DDDMMSS sometimes but we are moving to DDD.MMSS
     }
 
-    public static bool TryParseAzimuth(string input, out double result)
+    public static bool TryParseBearing(string input, out double result)
     {
         result = 0;
         if (string.IsNullOrWhiteSpace(input)) return false;
-
         input = input.Trim();
 
-        // 1. Try advanced Regex for formats like "123 45 06", "123-45-06", "123d45m06s", "123.45.06"
-        var match = DmsRegex.Match(input);
-        if (match.Success)
+        // Strict formats: DDD.MMSS or DDD MMSS
+        // Only allow digits, one period or one space.
+        if (Regex.IsMatch(input, @"^\d+\.\d{1,4}$"))
         {
-            if (double.TryParse(match.Groups[1].Value, out double d) &&
-                double.TryParse(match.Groups[2].Value, out double m) &&
-                double.TryParse(match.Groups[3].Value, out double s))
-            {
-                result = d + (m / 100.0) + (s / 10000.0);
-                return true;
-            }
+            if (double.TryParse(input, out result)) return true;
         }
-
-        // 2. Fallback: handle DDD.MMSS literal (e.g. 123.4506) or plain decimal
-        // Replace common separators with period to help double.TryParse if it's a simple split
-        string cleaned = input.Replace("-", ".").Replace(" ", ".");
-        string[] parts = cleaned.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
-        
-        if (parts.Length == 3) // 123.45.06 format
+        else if (Regex.IsMatch(input, @"^\d+ \d{1,4}$"))
         {
-            if (double.TryParse(parts[0], out double d) && double.TryParse(parts[1], out double m) && double.TryParse(parts[2], out double s))
-            {
-                result = d + (m / 100.0) + (s / 10000.0);
-                return true;
-            }
-        }
-
-        if (double.TryParse(cleaned, out double val))
-        {
-            result = val;
-            return true;
+            string converted = input.Replace(" ", ".");
+            if (double.TryParse(converted, out result)) return true;
         }
 
         return false;
@@ -391,7 +368,7 @@ public class CadastreWpfWindow : System.Windows.Window
     private bool _isBusy = false;
 
     // Controls
-    private TextBox txtAzimuth = null!, txtDistance = null!;
+    private TextBox txtBearing = null!, txtDistance = null!;
     private Label lblStatus = null!;
     private TextBlock txtRunningClosure = null!;
     private TextBlock txtAreaInfo = null!;
@@ -470,7 +447,7 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         _isBusy = busy;
         if (mainTabs != null) mainTabs.IsEnabled = !busy;
-        if (txtAzimuth != null) txtAzimuth.IsEnabled = !busy;
+        if (txtBearing != null) txtBearing.IsEnabled = !busy;
         if (txtDistance != null) txtDistance.IsEnabled = !busy;
         
         if (busy)
@@ -625,7 +602,7 @@ public class CadastreWpfWindow : System.Windows.Window
         spData.Children.Add(gPos);
 
         // Bearing Toolset Header
-        spData.Children.Add(UITheme.CreateLabel("AZIMUTH & ADJUSTMENTS"));
+        spData.Children.Add(UITheme.CreateLabel("BEARING (DDD.MMSS) & ADJUSTMENTS"));
 
         // Visual Grouping for Bearing Toolset
         Border grpAz = new Border() { Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)), CornerRadius = new CornerRadius(4), Padding = new Thickness(5), Margin = new Thickness(0, 0, 0, 10) };
@@ -637,24 +614,24 @@ public class CadastreWpfWindow : System.Windows.Window
         gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
         gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
 
-        txtAzimuth = UITheme.CreateInputBox(); txtAzimuth.PreviewKeyDown += Input_PreviewKeyDown;
+        txtBearing = UITheme.CreateInputBox(); txtBearing.PreviewKeyDown += Input_PreviewKeyDown;
         
         Button btnCalcAz = new Button() { Content = "Calc", Height = 35, Margin = new Thickness(5, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "Open DMS calculator" };
-        btnCalcAz.Click += (s, e) => OpenCalculator(txtAzimuth, true);
+        btnCalcAz.Click += (s, e) => OpenCalculator(txtBearing, true);
 
         Button bP90 = new Button() { Content = "+90\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21BB Rotate bearing +90\u00B0" };
-        bP90.Click += (s, e) => { ModifyBearing(90); txtAzimuth.Focus(); txtAzimuth.SelectAll(); };
+        bP90.Click += (s, e) => { ModifyBearing(90); txtBearing.Focus(); txtBearing.SelectAll(); };
         Button bM90 = new Button() { Content = "-90\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21BA Rotate bearing -90\u00B0" };
-        bM90.Click += (s, e) => { ModifyBearing(-90); txtAzimuth.Focus(); txtAzimuth.SelectAll(); };
+        bM90.Click += (s, e) => { ModifyBearing(-90); txtBearing.Focus(); txtBearing.SelectAll(); };
         Button bP180 = new Button() { Content = "+180\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21C5 Rotate bearing +180\u00B0" };
-        bP180.Click += (s, e) => { ModifyBearing(180); txtAzimuth.Focus(); txtAzimuth.SelectAll(); };
+        bP180.Click += (s, e) => { ModifyBearing(180); txtBearing.Focus(); txtBearing.SelectAll(); };
         Button bM180 = new Button() { Content = "-180\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21C5 Rotate bearing -180\u00B0" };
-        bM180.Click += (s, e) => { ModifyBearing(-180); txtAzimuth.Focus(); txtAzimuth.SelectAll(); };
+        bM180.Click += (s, e) => { ModifyBearing(-180); txtBearing.Focus(); txtBearing.SelectAll(); };
 
-        Grid.SetColumn(txtAzimuth, 0); Grid.SetColumn(btnCalcAz, 1);
+        Grid.SetColumn(txtBearing, 0); Grid.SetColumn(btnCalcAz, 1);
         Grid.SetColumn(bP90, 2); Grid.SetColumn(bM90, 3); Grid.SetColumn(bP180, 4); Grid.SetColumn(bM180, 5);
         
-        gAz.Children.Add(txtAzimuth); gAz.Children.Add(btnCalcAz);
+        gAz.Children.Add(txtBearing); gAz.Children.Add(btnCalcAz);
         gAz.Children.Add(bP90); gAz.Children.Add(bM90); gAz.Children.Add(bP180); gAz.Children.Add(bM180);
         grpAz.Child = gAz;
         spData.Children.Add(grpAz);
@@ -678,7 +655,7 @@ public class CadastreWpfWindow : System.Windows.Window
         Button CreateQuickBtn(string text, string tip, Action action)
         {
             Button b = new Button() { Content = text, Height = 35, Margin = new Thickness(2), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
-            b.Click += (s, e) => { action(); txtAzimuth.Focus(); txtAzimuth.SelectAll(); };
+            b.Click += (s, e) => { action(); txtBearing.Focus(); txtBearing.SelectAll(); };
             return b;
         }
 
@@ -817,7 +794,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         pnl.Children.Add(Header("WORKFLOW"));
         pnl.Children.Add(Body("1. PgUp: Open Coords Window (Type or Pick)."));
-        pnl.Children.Add(Body("2. Enter Azimuth/Dist (Auto-Calc available)."));
+        pnl.Children.Add(Body("2. Enter Bearing/Dist (Auto-Calc available)."));
         pnl.Children.Add(Body("3. Press Enter to Draw."));
         pnl.Children.Add(Body("4. Use QWE-ASD to switch layers."));
 
@@ -935,7 +912,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void Input_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (sender == txtAzimuth)
+        if (sender == txtBearing)
         {
             if (e.Key == Key.Up) { ModifyBearing(90); e.Handled = true; }
             if (e.Key == Key.Down) { ModifyBearing(-90); e.Handled = true; }
@@ -945,13 +922,13 @@ public class CadastreWpfWindow : System.Windows.Window
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            if (string.IsNullOrWhiteSpace(txtAzimuth.Text) && string.IsNullOrWhiteSpace(txtDistance.Text))
+            if (string.IsNullOrWhiteSpace(txtBearing.Text) && string.IsNullOrWhiteSpace(txtDistance.Text))
             {
                 TriggerCoordsWindow();
             }
             else
             {
-                if (sender == txtAzimuth) { txtDistance.Focus(); txtDistance.SelectAll(); }
+                if (sender == txtBearing) { txtDistance.Focus(); txtDistance.SelectAll(); }
                 else if (sender == txtDistance) ExecuteUiAction(() => ExecuteManualDraw());
             }
         }
@@ -970,7 +947,7 @@ public class CadastreWpfWindow : System.Windows.Window
         {
             BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
             BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-            Point3d newPt = DrawGeometryToDatabase(tr, btr, txtAzimuth.Text, txtDistance.Text, _currentPoint, _currentLayer);
+            Point3d newPt = DrawGeometryToDatabase(tr, btr, txtBearing.Text, txtDistance.Text, _currentPoint, _currentLayer);
             
             int currentNum = DwgDataManager.GetNextPointNumber(tr, _doc.Database) - 1;
             tr.Commit();
@@ -978,7 +955,7 @@ public class CadastreWpfWindow : System.Windows.Window
             _lastCreatedVertex = newPt; _currentPoint = newPt; _traversePath.Add(newPt);
 
             UpdateRunningMisclosure(); CalculateArea(); PlayAudio(); PanToPoint(newPt); _doc.Editor.UpdateScreen();
-            txtAzimuth.Focus(); txtAzimuth.SelectAll();
+            txtBearing.Focus(); txtBearing.SelectAll();
             UpdateGuideText("LINE ADDED. NEXT?");
         }
     }
@@ -1009,24 +986,26 @@ public class CadastreWpfWindow : System.Windows.Window
             }
 
             UpdateRunningMisclosure(); CalculateArea();
-            UpdateGuideText("ENTER AZIMUTH/DIST");
+            UpdateGuideText("ENTER BEARING/DIST");
             lblStatus.Content = "Start Set.";
-            txtAzimuth.Focus();
-            txtAzimuth.SelectAll();
+            txtBearing.Focus();
+            txtBearing.SelectAll();
             PanToPoint(pt);
         });
     }
 
-    private Point3d DrawGeometryToDatabase(Transaction tr, BlockTableRecord btr, string azStr, string distStr, Point3d startPt, string layer)
+    private Point3d DrawGeometryToDatabase(Transaction tr, BlockTableRecord btr, string brgStr, string distStr, Point3d startPt, string layer)
     {
-        double rawAz, dist;
-        if (!CadMath.TryParseAzimuth(azStr, out rawAz) || !double.TryParse(distStr, out dist))
+        double rawBrg, dist;
+        if (!CadMath.TryParseBearing(brgStr, out rawBrg) || !double.TryParse(distStr, out dist))
         {
-            lblStatus.Content = "INVALID DATA";
+            lblStatus.Content = "Invalid Format! Use DDD.MMSS or DDD MMSS";
             lblStatus.Foreground = Brushes.Red;
-            throw new System.Exception($"Invalid Azimuth or Distance format.");
+            throw new System.Exception("Invalid Bearing or Distance format.");
         }
         
+        lblStatus.Foreground = Brushes.White;
+
         // Ensure layer exists before database operation
         bool layerExists = false;
         using (Transaction checkTr = btr.Database.TransactionManager.StartTransaction())
@@ -1037,7 +1016,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
         if (!layerExists) EnsureLayerExists(layer);
 
-        double angleDeg = CadMath.ParseDmsToDegrees(rawAz);
+        double angleDeg = CadMath.ParseDmsToDegrees(rawBrg);
         double cadAngleRad = (90.0 - angleDeg) * (Math.PI / 180.0);
         Point3d endPoint = new Point3d(startPt.X + (dist * Math.Cos(cadAngleRad)), startPt.Y + (dist * Math.Sin(cadAngleRad)), startPt.Z);
         endPoint = CheckSnapping(endPoint, tr, btr);
@@ -1053,7 +1032,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
 
         createdEntities.Add(AddToDb(ln, btr, tr));
-        createdEntities.AddRange(CreateAnnotatedText(btr, tr, ln, rawAz, dist, cadAngleRad));
+        createdEntities.AddRange(CreateAnnotatedText(btr, tr, ln, rawBrg, dist, cadAngleRad));
 
         // FIX: Check if number exists before creating
         bool exists = DwgDataManager.IsPointNumberAtLocation(endPoint, tr, btr.Database);
@@ -1182,7 +1161,7 @@ public class CadastreWpfWindow : System.Windows.Window
         return target;
     }
 
-    private List<ObjectId> CreateAnnotatedText(BlockTableRecord btr, Transaction tr, Entity baseEnt, double rawAz, double dist, double cadAngleRad)
+    private List<ObjectId> CreateAnnotatedText(BlockTableRecord btr, Transaction tr, Entity baseEnt, double rawBrg, double dist, double cadAngleRad)
     {
         List<ObjectId> ids = new List<ObjectId>();
         double textRot = cadAngleRad; double normAng = cadAngleRad % (Math.PI * 2); if (normAng < 0) normAng += (Math.PI * 2);
@@ -1191,7 +1170,7 @@ public class CadastreWpfWindow : System.Windows.Window
         double dx = Math.Cos(cadAngleRad); double dy = Math.Sin(cadAngleRad); double offsetDist = _config.TextBrg.Size * 1.2;
         Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
 
-        int d = (int)rawAz; int m = (int)((rawAz - d) * 100); double s = ((rawAz * 10000) % 100);
+        int d = (int)rawBrg; int m = (int)((rawBrg - d) * 100); double s = ((rawBrg * 10000) % 100);
         ids.Add(AddToDb(CreateText($"{d}\u00B0{m:00}'{s:00}\"", CadConstants.LAY_TXT_BRG, mid + (upVec * offsetDist), AttachmentPoint.BottomCenter, tr, btr.Database, _config.TextBrg, textRot), btr, tr));
         ids.Add(AddToDb(CreateText(dist.ToString("0.000"), CadConstants.LAY_TXT_DIST, mid - (upVec * offsetDist), AttachmentPoint.TopCenter, tr, btr.Database, _config.TextDist, textRot), btr, tr));
         return ids;
@@ -1324,7 +1303,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void SetCurrentLayer(string layerName, Button btn)
     {
-        _currentLayer = layerName; HighlightActiveLayer(btn); txtAzimuth.Focus();
+        _currentLayer = layerName; HighlightActiveLayer(btn); txtBearing.Focus();
     }
 
     private void HighlightActiveLayer(Button active)
@@ -1349,18 +1328,23 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void ModifyBearing(double deltaDegrees)
     {
-        double current = 0;
-        if (double.TryParse(txtAzimuth.Text, out current))
+        double currentVal = 0;
+        if (CadMath.TryParseBearing(txtBearing.Text, out currentVal))
         {
-            double decDeg = CadMath.ParseDmsToDegrees(current);
-            decDeg += deltaDegrees; decDeg = decDeg % 360; if (decDeg < 0) decDeg += 360;
-            txtAzimuth.Text = CadMath.DegreesToDmsString(decDeg);
+            double decDeg = CadMath.ParseDmsToDegrees(currentVal);
+            decDeg += deltaDegrees;
+            txtBearing.Text = CadMath.DegreesToDmsString(decDeg);
             
             lblStatus.Content = $"Bearing Modified: {deltaDegrees}\u00B0";
             lblStatus.Foreground = Brushes.White;
 
-            txtAzimuth.Focus();
-            txtAzimuth.SelectAll();
+            txtBearing.Focus();
+            txtBearing.SelectAll();
+        }
+        else
+        {
+            lblStatus.Content = "Invalid Format! Use DDD.MMSS or DDD MMSS";
+            lblStatus.Foreground = Brushes.Red;
         }
     }
 
@@ -1421,12 +1405,13 @@ public class CadastreWpfWindow : System.Windows.Window
                 {
                     BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                     BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    DrawGeometryToDatabase(tr, btr, ssWin.Azimuth, ssWin.Distance, _currentPoint, _currentLayer);
+                    DrawGeometryToDatabase(tr, btr, ssWin.Bearing, ssWin.Distance, _currentPoint, _currentLayer);
                     if (!string.IsNullOrEmpty(ssWin.Comment))
                     {
-                        double rawAz; CadMath.TryParseAzimuth(ssWin.Azimuth, out rawAz);
+                        double rawBrg; 
+                        CadMath.TryParseBearing(ssWin.Bearing, out rawBrg);
                         double dist = double.Parse(ssWin.Distance);
-                        double angleDeg = CadMath.ParseDmsToDegrees(rawAz);
+                        double angleDeg = CadMath.ParseDmsToDegrees(rawBrg);
                         double rad = (90.0 - angleDeg) * (Math.PI / 180.0);
                         Point3d endPt = new Point3d(_currentPoint.X + (dist * Math.Cos(rad)), _currentPoint.Y + (dist * Math.Sin(rad)), _currentPoint.Z);
                         Entity txt = CreateText(ssWin.Comment, CadConstants.LAY_TXT_SYMB, endPt, AttachmentPoint.MiddleLeft, tr, _doc.Database, _config.TextComm);
@@ -1436,7 +1421,7 @@ public class CadastreWpfWindow : System.Windows.Window
                     tr.Commit(); _doc.Editor.UpdateScreen();
                 }
             });
-            txtAzimuth.Focus(); txtAzimuth.SelectAll();
+            txtBearing.Focus(); txtBearing.SelectAll();
         }
     }
 
@@ -1460,8 +1445,8 @@ public class CadastreWpfWindow : System.Windows.Window
         if (ppr.Status == PromptStatus.OK)
         {
             SetStartPoint(ppr.Value);
-            txtAzimuth.Focus();
-            txtAzimuth.SelectAll();
+            txtBearing.Focus();
+            txtBearing.SelectAll();
         }
         else if (ppr.Status == PromptStatus.Cancel)
         {
@@ -1488,8 +1473,8 @@ public class CadastreWpfWindow : System.Windows.Window
                     if (ppr.Status == PromptStatus.OK)
                     {
                         SetStartPoint(ppr.Value);
-                        txtAzimuth.Focus();
-                        txtAzimuth.SelectAll();
+                        txtBearing.Focus();
+                        txtBearing.SelectAll();
                     }
                     else if (ppr.Status == PromptStatus.Cancel)
                     {
@@ -1597,8 +1582,8 @@ public class CoordsInputWindow : System.Windows.Window
 
 public class SideShotWpfWindow : System.Windows.Window
 {
-    public string Azimuth => txtAz.Text; public string Distance => txtDist.Text; public string Comment => txtComm.Text;
-    private TextBox txtAz = null!, txtDist = null!, txtComm = null!;
+    public string Bearing => txtBrg.Text; public string Distance => txtDist.Text; public string Comment => txtComm.Text;
+    private TextBox txtBrg = null!, txtDist = null!, txtComm = null!;
     public SideShotWpfWindow()
     {
         this.Title = "SIDE SHOT"; this.Width = 600; this.Height = 600;
@@ -1612,10 +1597,10 @@ public class SideShotWpfWindow : System.Windows.Window
         Border card = UITheme.CreateCard(); card.Margin = new Thickness(20); StackPanel pnl = new StackPanel();
 
         Grid gAz = new Grid(); gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
-        pnl.Children.Add(UITheme.CreateLabel("AZIMUTH"));
-        txtAz = UITheme.CreateInputBox(); txtAz.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; txtDist.Focus(); txtDist.SelectAll(); } };
-        Button btnCAz = new Button() { Content = "C", Height = 35 }; btnCAz.Click += (s, e) => { CalculatorWindow c = new CalculatorWindow(txtAz.Text, true); c.Owner = this; if (c.ShowDialog() == true) txtAz.Text = c.Result; };
-        Grid.SetColumn(txtAz, 0); Grid.SetColumn(btnCAz, 1); gAz.Children.Add(txtAz); gAz.Children.Add(btnCAz); pnl.Children.Add(gAz); pnl.Children.Add(new Border() { Height = 15 });
+        pnl.Children.Add(UITheme.CreateLabel("BEARING"));
+        txtBrg = UITheme.CreateInputBox(); txtBrg.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; txtDist.Focus(); txtDist.SelectAll(); } };
+        Button btnCAz = new Button() { Content = "C", Height = 35 }; btnCAz.Click += (s, e) => { CalculatorWindow c = new CalculatorWindow(txtBrg.Text, true); c.Owner = this; if (c.ShowDialog() == true) txtBrg.Text = c.Result; };
+        Grid.SetColumn(txtBrg, 0); Grid.SetColumn(btnCAz, 1); gAz.Children.Add(txtBrg); gAz.Children.Add(btnCAz); pnl.Children.Add(gAz); pnl.Children.Add(new Border() { Height = 15 });
 
         Grid gDst = new Grid(); gDst.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gDst.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
         pnl.Children.Add(UITheme.CreateLabel("DISTANCE"));
@@ -1634,7 +1619,7 @@ public class SideShotWpfWindow : System.Windows.Window
         btnCancel.Click += (s, e) => { this.DialogResult = false; this.Close(); };
         btnOk.Click += (s, e) => { this.DialogResult = true; this.Close(); };
         btns.Children.Add(btnCancel); btns.Children.Add(btnOk); Grid.SetRow(btns, 2); root.Children.Add(btns);
-        this.Content = root; this.Loaded += (s, e) => txtAz.Focus();
+        this.Content = root; this.Loaded += (s, e) => txtBrg.Focus();
     }
 }
 
