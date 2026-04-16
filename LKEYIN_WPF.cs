@@ -577,13 +577,13 @@ public class CadastreWpfWindow : System.Windows.Window
         Grid.SetRow(footer, 2); mainGrid.Children.Add(footer);
 
         Border st = new Border() { Background = UITheme.AccentColor };
-        lblStatus = new Label() { Content = "Ready", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
+        lblStatus = new Label() { Content = "Select E & N or PICK to begin traverse.", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
         st.Child = lblStatus;
         Grid.SetRow(st, 3); mainGrid.Children.Add(st);
 
         this.Content = mainGrid;
         this.PreviewKeyDown += Window_PreviewKeyDown;
-        UpdateGuideText("PICK START POINT (PgUp or Enter)");
+        UpdateGuideText("Select E & N or PICK");
     }
     #endregion
 
@@ -603,6 +603,26 @@ public class CadastreWpfWindow : System.Windows.Window
         // --- 1. DATA ENTRY CARD ---
         Border cardData = UITheme.CreateCard(); cardData.Margin = new Thickness(15, 0, 15, 10);
         StackPanel spData = new StackPanel();
+
+        // --- Positioning Row (E & N / PICK) ---
+        Grid gPos = new Grid();
+        gPos.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        gPos.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        gPos.Margin = new Thickness(0, 0, 0, 10);
+
+        Button btnEN = UITheme.CreateActionBtn("\ud83d\udccd E & N", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        btnEN.Height = 40; btnEN.Margin = new Thickness(0, 0, 5, 0);
+        btnEN.ToolTip = "Enter starting coordinates manually (Easting/Northing).";
+        btnEN.Click += (s, e) => TriggerCoordsWindow();
+
+        Button btnPick = UITheme.CreateActionBtn("\ud83d\uddb1\ufe0f PICK", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        btnPick.Height = 40; btnPick.Margin = new Thickness(5, 0, 0, 0);
+        btnPick.ToolTip = "Select a starting point directly from the AutoCAD drawing screen.";
+        btnPick.Click += (s, e) => ExecuteUiAction(() => ExecuteScreenPick());
+
+        Grid.SetColumn(btnEN, 0); Grid.SetColumn(btnPick, 1);
+        gPos.Children.Add(btnEN); gPos.Children.Add(btnPick);
+        spData.Children.Add(gPos);
 
         // Bearing Toolset Header
         spData.Children.Add(UITheme.CreateLabel("AZIMUTH & ADJUSTMENTS"));
@@ -992,6 +1012,7 @@ public class CadastreWpfWindow : System.Windows.Window
             UpdateGuideText("ENTER AZIMUTH/DIST");
             lblStatus.Content = "Start Set.";
             txtAzimuth.Focus();
+            txtAzimuth.SelectAll();
             PanToPoint(pt);
         });
     }
@@ -1424,6 +1445,14 @@ public class CadastreWpfWindow : System.Windows.Window
         CalculatorWindow cWin = new CalculatorWindow(txt.Text, isDms);
         cWin.Owner = this;
         if (cWin.ShowDialog() == true) { txt.Text = cWin.Result; txt.Focus(); txt.SelectAll(); }
+    }
+
+    private void ExecuteScreenPick()
+    {
+        this.Hide();
+        PromptPointResult ppr = _doc.Editor.GetPoint("\nPick Start Point: ");
+        this.Show();
+        if (ppr.Status == PromptStatus.OK) SetStartPoint(ppr.Value);
     }
 
     private void TriggerCoordsWindow()
