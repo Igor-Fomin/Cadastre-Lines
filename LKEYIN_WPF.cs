@@ -618,7 +618,7 @@ public class CadastreWpfWindow : System.Windows.Window
         Button btnPick = UITheme.CreateActionBtn("\ud83d\uddb1\ufe0f PICK", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
         btnPick.Height = 40; btnPick.Margin = new Thickness(5, 0, 0, 0);
         btnPick.ToolTip = "Select a starting point directly from the AutoCAD drawing screen.";
-        btnPick.Click += (s, e) => ExecuteUiAction(() => ExecuteScreenPick());
+        btnPick.Click += (s, e) => ExecuteScreenPick();
 
         Grid.SetColumn(btnEN, 0); Grid.SetColumn(btnPick, 1);
         gPos.Children.Add(btnEN); gPos.Children.Add(btnPick);
@@ -1449,10 +1449,24 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void ExecuteScreenPick()
     {
+        var doc = AcApp.DocumentManager.MdiActiveDocument;
+        if (doc == null) return;
+        var ed = doc.Editor;
+
         this.Hide();
-        PromptPointResult ppr = _doc.Editor.GetPoint("\nPick Start Point: ");
+        PromptPointResult ppr = ed.GetPoint("\nPick Start Point: ");
         this.Show();
-        if (ppr.Status == PromptStatus.OK) SetStartPoint(ppr.Value);
+
+        if (ppr.Status == PromptStatus.OK)
+        {
+            SetStartPoint(ppr.Value);
+            txtAzimuth.Focus();
+            txtAzimuth.SelectAll();
+        }
+        else if (ppr.Status == PromptStatus.Cancel)
+        {
+            lblStatus.Content = "Pick cancelled.";
+        }
     }
 
     private void TriggerCoordsWindow()
@@ -1465,10 +1479,23 @@ public class CadastreWpfWindow : System.Windows.Window
         {
             if (w.PickRequested)
             {
-                this.Hide();
-                PromptPointResult ppr = AcApp.DocumentManager.MdiActiveDocument.Editor.GetPoint("\nPick Start Point: ");
-                this.Show();
-                if (ppr.Status == PromptStatus.OK) SetStartPoint(ppr.Value);
+                var doc = AcApp.DocumentManager.MdiActiveDocument;
+                if (doc != null)
+                {
+                    this.Hide();
+                    PromptPointResult ppr = doc.Editor.GetPoint("\nPick Start Point: ");
+                    this.Show();
+                    if (ppr.Status == PromptStatus.OK)
+                    {
+                        SetStartPoint(ppr.Value);
+                        txtAzimuth.Focus();
+                        txtAzimuth.SelectAll();
+                    }
+                    else if (ppr.Status == PromptStatus.Cancel)
+                    {
+                        lblStatus.Content = "Pick cancelled.";
+                    }
+                }
             }
             else
             {
