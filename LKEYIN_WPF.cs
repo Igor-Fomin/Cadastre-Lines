@@ -577,13 +577,13 @@ public class CadastreWpfWindow : System.Windows.Window
         Grid.SetRow(footer, 2); mainGrid.Children.Add(footer);
 
         Border st = new Border() { Background = UITheme.AccentColor };
-        lblStatus = new Label() { Content = "Select E & N or PICK to begin traverse.", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
+        lblStatus = new Label() { Content = "USE E & N OR PICK TO START NEW LINE", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
         st.Child = lblStatus;
         Grid.SetRow(st, 3); mainGrid.Children.Add(st);
 
         this.Content = mainGrid;
         this.PreviewKeyDown += Window_PreviewKeyDown;
-        UpdateGuideText("Select E & N or PICK");
+        UpdateGuideText("USE E & N OR PICK TO START NEW LINE");
     }
     #endregion
 
@@ -604,7 +604,7 @@ public class CadastreWpfWindow : System.Windows.Window
         Border cardData = UITheme.CreateCard(); cardData.Margin = new Thickness(15, 0, 15, 10);
         StackPanel spData = new StackPanel();
 
-        // --- Positioning Row (E & N / PICK) ---
+        // --- Traverse Setup Row (E & N / PICK) ---
         Grid gPos = new Grid();
         gPos.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
         gPos.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
