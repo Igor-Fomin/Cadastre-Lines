@@ -952,12 +952,33 @@ public class CadastreWpfWindow : System.Windows.Window
 
             if (string.IsNullOrWhiteSpace(txtBearing.Text) && string.IsNullOrWhiteSpace(txtDistance.Text))
             {
-                TriggerCoordsWindow();
+                if (!_hasStartPoint)
+                {
+                    TriggerCoordsWindow();
+                    return;
+                }
+                else
+                {
+                    txtBearing.Focus();
+                }
             }
             else
             {
-                if (tb == txtBearing) { txtDistance.Focus(); txtDistance.SelectAll(); }
-                else if (tb == txtDistance) ExecuteUiAction(() => ExecuteManualDraw());
+                if (tb == txtBearing) 
+                { 
+                    txtDistance.Focus(); 
+                    txtDistance.SelectAll(); 
+                }
+                else if (tb == txtDistance) 
+                {
+                    if (string.IsNullOrWhiteSpace(txtBearing.Text) || string.IsNullOrWhiteSpace(txtDistance.Text))
+                    {
+                        // Don't draw if one is missing, but also don't show warning if just tabbing through
+                        if (string.IsNullOrWhiteSpace(txtBearing.Text)) txtBearing.Focus();
+                        return;
+                    }
+                    ExecuteUiAction(() => ExecuteManualDraw());
+                }
             }
         }
     }
@@ -1017,7 +1038,12 @@ public class CadastreWpfWindow : System.Windows.Window
             _lastCreatedVertex = newPt; _currentPoint = newPt; _traversePath.Add(newPt);
 
             UpdateRunningMisclosure(); CalculateArea(); PlayAudio(); PanToPoint(newPt); _doc.Editor.UpdateScreen();
-            txtBearing.Focus(); txtBearing.SelectAll();
+            
+            this.Dispatcher.BeginInvoke(new Action(() => {
+                txtBearing.Focus();
+                txtBearing.SelectAll();
+            }), System.Windows.Threading.DispatcherPriority.Input);
+
             UpdateGuideText("LINE ADDED. NEXT?");
         }
     }
