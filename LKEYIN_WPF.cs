@@ -607,7 +607,7 @@ public class CadastreWpfWindow : System.Windows.Window
         spData.Children.Add(gPos);
 
         // Bearing Toolset Header
-        spData.Children.Add(UITheme.CreateLabel("BEARING (DDD.MMSS) & ADJUSTMENTS"));
+        spData.Children.Add(UITheme.CreateLabel("BEARING (DDD.MMSS)"));
 
         // Visual Grouping for Bearing Toolset
         Border grpBrg = new Border() { Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)), CornerRadius = new CornerRadius(4), Padding = new Thickness(5), Margin = new Thickness(0, 0, 0, 10) };
@@ -655,7 +655,7 @@ public class CadastreWpfWindow : System.Windows.Window
         // --- 2. QUICK ACTIONS CARD ---
         Border cardQuick = UITheme.CreateCard(); cardQuick.Margin = new Thickness(15, 0, 15, 10);
         Grid gActions = new Grid();
-        for (int i = 0; i < 4; i++) gActions.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        for (int i = 0; i < 3; i++) gActions.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
         Button CreateQuickBtn(string text, string tip, Action action)
         {
@@ -665,12 +665,11 @@ public class CadastreWpfWindow : System.Windows.Window
         }
 
         Button bUndo = CreateQuickBtn("\u21B2 Undo", "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
-        Button bCoords = CreateQuickBtn("\ud83d\udccd Coords", "Set/Pick Start Coordinates (PGUP)", () => TriggerCoordsWindow());
         Button bRad = CreateQuickBtn("\u2600 Side Shot", "Open Side Shot/Offset Menu (PGDN)", () => OpenSideShotForm());
         Button bComm = CreateQuickBtn("\ud83d\udcac Comment", "Add Text Comment/Symbol (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
 
-        Grid.SetColumn(bUndo, 0); Grid.SetColumn(bCoords, 1); Grid.SetColumn(bRad, 2); Grid.SetColumn(bComm, 3);
-        gActions.Children.Add(bUndo); gActions.Children.Add(bCoords); gActions.Children.Add(bRad); gActions.Children.Add(bComm);
+        Grid.SetColumn(bUndo, 0); Grid.SetColumn(bRad, 1); Grid.SetColumn(bComm, 2);
+        gActions.Children.Add(bUndo); gActions.Children.Add(bRad); gActions.Children.Add(bComm);
 
         cardQuick.Child = gActions;
         Grid.SetRow(cardQuick, 2); mainG.Children.Add(cardQuick);
