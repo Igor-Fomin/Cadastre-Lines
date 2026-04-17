@@ -664,7 +664,7 @@ public class CadastreWpfWindow : System.Windows.Window
         gInputMaster.Children.Add(gBrgBtns);
 
         // Bearing Trace (Row 2)
-        lblBearingTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, 0, 0, 5) };
+        lblBearingTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, -2, 0, 10) };
         Grid.SetRow(lblBearingTrace, 2); Grid.SetColumnSpan(lblBearingTrace, 2);
         gInputMaster.Children.Add(lblBearingTrace);
 
@@ -700,7 +700,7 @@ public class CadastreWpfWindow : System.Windows.Window
         gInputMaster.Children.Add(bSS);
 
         // Distance Trace (Row 5)
-        lblDistanceTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, 0, 0, 5) };
+        lblDistanceTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, 2, 0, 10) };
         Grid.SetRow(lblDistanceTrace, 5); Grid.SetColumnSpan(lblDistanceTrace, 2);
         gInputMaster.Children.Add(lblDistanceTrace);
 
