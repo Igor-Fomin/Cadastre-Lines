@@ -374,6 +374,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
     // Controls
     private TextBox txtBearing = null!, txtDistance = null!;
+    private TextBlock lblBearingTrace = null!, lblDistanceTrace = null!;
     private Label lblStatus = null!;
     private TextBlock txtRunningClosure = null!;
     private TextBlock txtAreaInfo = null!;
@@ -613,7 +614,6 @@ public class CadastreWpfWindow : System.Windows.Window
         Border grpBrg = new Border() { Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)), CornerRadius = new CornerRadius(4), Padding = new Thickness(5), Margin = new Thickness(0, 0, 0, 10) };
         Grid gBrg = new Grid(); 
         gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); 
-        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
         gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
         gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
         gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
@@ -621,9 +621,6 @@ public class CadastreWpfWindow : System.Windows.Window
 
         txtBearing = UITheme.CreateInputBox(); txtBearing.PreviewKeyDown += Input_PreviewKeyDown;
         
-        Button btnCalcBrg = new Button() { Content = "Calc", Height = 35, Margin = new Thickness(5, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "Open DMS calculator" };
-        btnCalcBrg.Click += (s, e) => OpenCalculator(txtBearing, true);
-
         Button bP90 = new Button() { Content = "+90\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21BB Rotate bearing +90\u00B0" };
         bP90.Click += (s, e) => { ModifyBearing(90); txtBearing.Focus(); txtBearing.SelectAll(); };
         Button bM90 = new Button() { Content = "-90\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21BA Rotate bearing -90\u00B0" };
@@ -633,21 +630,23 @@ public class CadastreWpfWindow : System.Windows.Window
         Button bM180 = new Button() { Content = "-180\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21C5 Rotate bearing -180\u00B0" };
         bM180.Click += (s, e) => { ModifyBearing(-180); txtBearing.Focus(); txtBearing.SelectAll(); };
 
-        Grid.SetColumn(txtBearing, 0); Grid.SetColumn(btnCalcBrg, 1);
-        Grid.SetColumn(bP90, 2); Grid.SetColumn(bM90, 3); Grid.SetColumn(bP180, 4); Grid.SetColumn(bM180, 5);
+        Grid.SetColumn(txtBearing, 0); 
+        Grid.SetColumn(bP90, 1); Grid.SetColumn(bM90, 2); Grid.SetColumn(bP180, 3); Grid.SetColumn(bM180, 4);
         
-        gBrg.Children.Add(txtBearing); gBrg.Children.Add(btnCalcBrg);
+        gBrg.Children.Add(txtBearing);
         gBrg.Children.Add(bP90); gBrg.Children.Add(bM90); gBrg.Children.Add(bP180); gBrg.Children.Add(bM180);
         grpBrg.Child = gBrg;
         spData.Children.Add(grpBrg);
 
+        lblBearingTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, -8, 0, 8) };
+        spData.Children.Add(lblBearingTrace);
+
         spData.Children.Add(UITheme.CreateLabel("DISTANCE (m)"));
-        Grid gDist = new Grid(); gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
         txtDistance = UITheme.CreateInputBox(); txtDistance.PreviewKeyDown += Input_PreviewKeyDown;
-        Button btnCalcDist = new Button() { Content = "Calc", Height = 35, Margin = new Thickness(5, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "Open distance calculator" };
-        btnCalcDist.Click += (s, e) => OpenCalculator(txtDistance, false);
-        Grid.SetColumn(txtDistance, 0); Grid.SetColumn(btnCalcDist, 1); gDist.Children.Add(txtDistance); gDist.Children.Add(btnCalcDist);
-        spData.Children.Add(gDist);
+        spData.Children.Add(txtDistance);
+
+        lblDistanceTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, 2, 0, 8) };
+        spData.Children.Add(lblDistanceTrace);
 
         cardData.Child = spData;
         Grid.SetRow(cardData, 1); mainG.Children.Add(cardData);
@@ -916,25 +915,84 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void Input_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (sender == txtBearing)
+        TextBox tb = (TextBox)sender;
+        if (tb == txtBearing)
         {
             if (e.Key == Key.Up) { ModifyBearing(90); e.Handled = true; }
             if (e.Key == Key.Down) { ModifyBearing(-90); e.Handled = true; }
             if (e.Key == Key.Right) { ModifyBearing(180); e.Handled = true; }
             if (e.Key == Key.Left) { ModifyBearing(-180); e.Handled = true; }
         }
+
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
+            string input = tb.Text.Trim();
+            
+            if (input.Contains("+") || input.Contains("-") || input.Contains("*") || input.Contains("/"))
+            {
+                string oldVal = input;
+                string result = EvaluateInlineExpression(input, tb == txtBearing);
+                if (result != null)
+                {
+                    tb.Text = result;
+                    if (tb == txtBearing) lblBearingTrace.Text = $"{oldVal} = {result}";
+                    else lblDistanceTrace.Text = $"{oldVal} = {result}";
+                    
+                    tb.Foreground = Brushes.White;
+                    tb.FontWeight = FontWeights.Bold;
+                    var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                    timer.Tick += (s, ev) => { tb.Foreground = Brushes.Cyan; tb.FontWeight = FontWeights.Normal; timer.Stop(); };
+                    timer.Start();
+
+                    tb.SelectAll();
+                    return; // Wait for next Enter to move focus or draw
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(txtBearing.Text) && string.IsNullOrWhiteSpace(txtDistance.Text))
             {
                 TriggerCoordsWindow();
             }
             else
             {
-                if (sender == txtBearing) { txtDistance.Focus(); txtDistance.SelectAll(); }
-                else if (sender == txtDistance) ExecuteUiAction(() => ExecuteManualDraw());
+                if (tb == txtBearing) { txtDistance.Focus(); txtDistance.SelectAll(); }
+                else if (tb == txtDistance) ExecuteUiAction(() => ExecuteManualDraw());
             }
+        }
+    }
+
+    private string EvaluateInlineExpression(string input, bool isDms)
+    {
+        try
+        {
+            if (isDms)
+            {
+                string[] parts;
+                if (input.Contains("+"))
+                {
+                    parts = input.Split('+');
+                    double v1 = double.Parse(parts[0].Trim()); double v2 = double.Parse(parts[1].Trim());
+                    return CadMath.DmsToString(CadMath.AddSubDms(v1, v2, true));
+                }
+                else if (input.Contains("-"))
+                {
+                    parts = input.Split('-');
+                    double v1 = double.Parse(parts[0].Trim()); double v2 = double.Parse(parts[1].Trim());
+                    return CadMath.DmsToString(CadMath.AddSubDms(v1, v2, false));
+                }
+            }
+            
+            System.Data.DataTable dt = new System.Data.DataTable();
+            var v = dt.Compute(input, "");
+            double res = Convert.ToDouble(v);
+            return isDms ? CadMath.DmsToString(res) : res.ToString("0.000");
+        }
+        catch
+        {
+            lblStatus.Content = "Invalid Math Expression";
+            lblStatus.Foreground = Brushes.OrangeRed;
+            return null;
         }
     }
     #endregion
@@ -992,6 +1050,7 @@ public class CadastreWpfWindow : System.Windows.Window
             UpdateRunningMisclosure(); CalculateArea();
             UpdateGuideText("ENTER BEARING & DIST");
             lblStatus.Content = "Start Set.";
+            lblBearingTrace.Text = ""; lblDistanceTrace.Text = "";
             txtBearing.Focus();
             txtBearing.SelectAll();
             PanToPoint(pt);
