@@ -642,8 +642,20 @@ public class CadastreWpfWindow : System.Windows.Window
         spData.Children.Add(lblBearingTrace);
 
         spData.Children.Add(UITheme.CreateLabel("DISTANCE (m)"));
+        Grid gDist = new Grid();
+        gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
+
         txtDistance = UITheme.CreateInputBox(); txtDistance.PreviewKeyDown += Input_PreviewKeyDown;
-        spData.Children.Add(txtDistance);
+        Grid.SetColumn(txtDistance, 0);
+        gDist.Children.Add(txtDistance);
+
+        Button bSS = new Button() { Content = "\u2600 SS", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "Open Side Shot/Offset Menu (PGDN)" };
+        bSS.Click += (s, e) => { OpenSideShotForm(); txtBearing.Focus(); txtBearing.SelectAll(); };
+        Grid.SetColumn(bSS, 1);
+        gDist.Children.Add(bSS);
+
+        spData.Children.Add(gDist);
 
         lblDistanceTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, 2, 0, 8) };
         spData.Children.Add(lblDistanceTrace);
@@ -654,7 +666,7 @@ public class CadastreWpfWindow : System.Windows.Window
         // --- 2. QUICK ACTIONS CARD ---
         Border cardQuick = UITheme.CreateCard(); cardQuick.Margin = new Thickness(15, 0, 15, 10);
         Grid gActions = new Grid();
-        for (int i = 0; i < 3; i++) gActions.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        for (int i = 0; i < 2; i++) gActions.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
         Button CreateQuickBtn(string text, string tip, Action action)
         {
@@ -664,11 +676,10 @@ public class CadastreWpfWindow : System.Windows.Window
         }
 
         Button bUndo = CreateQuickBtn("\u21B2 Undo", "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
-        Button bRad = CreateQuickBtn("\u2600 Side Shot", "Open Side Shot/Offset Menu (PGDN)", () => OpenSideShotForm());
         Button bComm = CreateQuickBtn("\ud83d\udcac Comment", "Add Text Comment/Symbol (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
 
-        Grid.SetColumn(bUndo, 0); Grid.SetColumn(bRad, 1); Grid.SetColumn(bComm, 2);
-        gActions.Children.Add(bUndo); gActions.Children.Add(bRad); gActions.Children.Add(bComm);
+        Grid.SetColumn(bUndo, 0); Grid.SetColumn(bComm, 1);
+        gActions.Children.Add(bUndo); gActions.Children.Add(bComm);
 
         cardQuick.Child = gActions;
         Grid.SetRow(cardQuick, 2); mainG.Children.Add(cardQuick);
