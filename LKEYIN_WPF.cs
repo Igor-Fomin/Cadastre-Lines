@@ -137,7 +137,16 @@ public static class UITheme
 
     public static Button CreateLayerBtn(string key) { return new Button() { Content = key, Height = 55, Margin = new Thickness(3), FontWeight = FontWeights.Bold, FontSize = 14, BorderThickness = new Thickness(0), Foreground = Brushes.White }; }
     public static CheckBox CreateToggle(string text) { return new CheckBox() { Content = text, Foreground = Brushes.White, Margin = new Thickness(5), FontSize = 14 }; }
-    public static Button CreateActionBtn(string text, Brush bg) { return new Button() { Content = text, Height = 35, Background = bg, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 5, 0, 5) }; }
+    public static Button CreateActionBtn(string text, Brush bg) { return new Button() { Content = text, Height = 35, Background = bg, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 5, 0, 5), HorizontalAlignment = HorizontalAlignment.Stretch }; }
+
+    public static UIElement CreateShortcutContent(string key, string description)
+    {
+        TextBlock tb = new TextBlock() { TextAlignment = System.Windows.TextAlignment.Center };
+        tb.Inlines.Add(new Run(key) { FontSize = 10, FontWeight = FontWeights.Bold });
+        tb.Inlines.Add(new LineBreak());
+        tb.Inlines.Add(new Run(description) { FontSize = 13 });
+        return tb;
+    }
 
     public static Button CreateColorBtn(short colorIndex)
     {
@@ -593,12 +602,14 @@ public class CadastreWpfWindow : System.Windows.Window
         gPos.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
         gPos.Margin = new Thickness(0, 0, 0, 10);
 
-        Button btnEN = UITheme.CreateActionBtn("\ud83d\udccd E & N", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        Button btnEN = UITheme.CreateActionBtn("", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        btnEN.Content = UITheme.CreateShortcutContent("PgUp", "\ud83d\udccd E & N");
         btnEN.Height = 40; btnEN.Margin = new Thickness(0, 0, 5, 0);
         btnEN.ToolTip = "Enter starting coordinates manually (Easting/Northing).";
         btnEN.Click += (s, e) => TriggerCoordsWindow();
 
-        Button btnPick = UITheme.CreateActionBtn("\ud83d\uddb1\ufe0f PICK", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        Button btnPick = UITheme.CreateActionBtn("", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        btnPick.Content = UITheme.CreateShortcutContent("PgUp", "\ud83d\uddb1\ufe0f PICK");
         btnPick.Height = 40; btnPick.Margin = new Thickness(5, 0, 0, 0);
         btnPick.ToolTip = "Select a starting point directly from the AutoCAD drawing screen.";
         btnPick.Click += (s, e) => ExecuteScreenPick();
@@ -635,16 +646,16 @@ public class CadastreWpfWindow : System.Windows.Window
         Grid gBrgBtns = new Grid();
         for (int i = 0; i < 4; i++) gBrgBtns.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
 
-        Button CreateBrgBtn(string text, string tip, double delta) {
-            Button b = new Button() { Content = text, Width = 45, Height = 35, Margin = new Thickness(3, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
+        Button CreateBrgBtn(object content, string tip, double delta) {
+            Button b = new Button() { Content = content, Width = 45, Height = 35, Margin = new Thickness(3, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
             b.Click += (s, e) => { ModifyBearing(delta); txtBearing.Focus(); txtBearing.SelectAll(); };
             return b;
         }
 
-        Button bP90 = CreateBrgBtn("+90\u00B0", "\u21BB Rotate bearing +90\u00B0", 90);
-        Button bM90 = CreateBrgBtn("-90\u00B0", "\u21BA Rotate bearing -90\u00B0", -90);
-        Button bP180 = CreateBrgBtn("+180\u00B0", "\u21C5 Rotate bearing +180\u00B0", 180);
-        Button bM180 = CreateBrgBtn("-180\u00B0", "\u21C5 Rotate bearing -180\u00B0", -180);
+        Button bP90 = CreateBrgBtn(UITheme.CreateShortcutContent("\u2191", "+90\u00B0"), "\u21BB Rotate bearing +90\u00B0", 90);
+        Button bM90 = CreateBrgBtn(UITheme.CreateShortcutContent("\u2193", "-90\u00B0"), "\u21BA Rotate bearing -90\u00B0", -90);
+        Button bP180 = CreateBrgBtn(UITheme.CreateShortcutContent("\u2192", "+180\u00B0"), "\u21C5 Rotate bearing +180\u00B0", 180);
+        Button bM180 = CreateBrgBtn(UITheme.CreateShortcutContent("\u2190", "-180\u00B0"), "\u21C5 Rotate bearing -180\u00B0", -180);
 
         Grid.SetColumn(bP90, 0); Grid.SetColumn(bM90, 1); Grid.SetColumn(bP180, 2); Grid.SetColumn(bM180, 3);
         gBrgBtns.Children.Add(bP90); gBrgBtns.Children.Add(bM90); gBrgBtns.Children.Add(bP180); gBrgBtns.Children.Add(bM180);
@@ -672,7 +683,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         // SIDE SHOT Button (Row 4, Col 1)
         Button bSS = new Button() { 
-            Content = "\u2699 SIDE SHOT", 
+            Content = UITheme.CreateShortcutContent("PgDn", "\u2699 SIDE SHOT"),
             Height = 35, 
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
@@ -701,15 +712,15 @@ public class CadastreWpfWindow : System.Windows.Window
         Grid gActions = new Grid();
         for (int i = 0; i < 2; i++) gActions.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
-        Button CreateQuickBtn(string text, string tip, Action action)
+        Button CreateQuickBtn(object content, string tip, Action action)
         {
-            Button b = new Button() { Content = text, Height = 35, Margin = new Thickness(2), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
+            Button b = new Button() { Content = content, Height = 55, Margin = new Thickness(2), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip, HorizontalAlignment = HorizontalAlignment.Stretch };
             b.Click += (s, e) => { action(); txtBearing.Focus(); txtBearing.SelectAll(); };
             return b;
         }
 
-        Button bUndo = CreateQuickBtn("\u21B2 Undo", "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
-        Button bComm = CreateQuickBtn("\ud83d\udcac Comment", "Add Text Comment/Symbol (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
+        Button bUndo = CreateQuickBtn(UITheme.CreateShortcutContent("Del", "\u21B2 Undo"), "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
+        Button bComm = CreateQuickBtn(UITheme.CreateShortcutContent("Ins", "\ud83d\udcac Comment"), "Add Text Comment/Symbol (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
 
         Grid.SetColumn(bUndo, 0); Grid.SetColumn(bComm, 1);
         gActions.Children.Add(bUndo); gActions.Children.Add(bComm);
