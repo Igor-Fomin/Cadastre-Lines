@@ -607,59 +607,92 @@ public class CadastreWpfWindow : System.Windows.Window
         gPos.Children.Add(btnEN); gPos.Children.Add(btnPick);
         spData.Children.Add(gPos);
 
-        // Bearing Toolset Header
-        spData.Children.Add(UITheme.CreateLabel("BEARING (DDD.MMSS)"));
-
-        // Visual Grouping for Bearing Toolset
-        Border grpBrg = new Border() { Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)), CornerRadius = new CornerRadius(4), Padding = new Thickness(5), Margin = new Thickness(0, 0, 0, 10) };
-        Grid gBrg = new Grid(); 
-        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); 
-        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
-        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
-        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
-        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
-
-        txtBearing = UITheme.CreateInputBox(); txtBearing.PreviewKeyDown += Input_PreviewKeyDown;
+        // --- Master Input Grid (Aligns Bearing and Distance Columns) ---
+        Grid gInputMaster = new Grid();
+        gInputMaster.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        gInputMaster.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(192) });
         
-        Button bP90 = new Button() { Content = "+90\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21BB Rotate bearing +90\u00B0" };
-        bP90.Click += (s, e) => { ModifyBearing(90); txtBearing.Focus(); txtBearing.SelectAll(); };
-        Button bM90 = new Button() { Content = "-90\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21BA Rotate bearing -90\u00B0" };
-        bM90.Click += (s, e) => { ModifyBearing(-90); txtBearing.Focus(); txtBearing.SelectAll(); };
-        Button bP180 = new Button() { Content = "+180\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21C5 Rotate bearing +180\u00B0" };
-        bP180.Click += (s, e) => { ModifyBearing(180); txtBearing.Focus(); txtBearing.SelectAll(); };
-        Button bM180 = new Button() { Content = "-180\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21C5 Rotate bearing -180\u00B0" };
-        bM180.Click += (s, e) => { ModifyBearing(-180); txtBearing.Focus(); txtBearing.SelectAll(); };
+        gInputMaster.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 0: Bearing Label
+        gInputMaster.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 1: Bearing Row
+        gInputMaster.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 2: Bearing Trace
+        gInputMaster.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 3: Distance Label
+        gInputMaster.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 4: Distance Row
+        gInputMaster.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 5: Distance Trace
 
-        Grid.SetColumn(txtBearing, 0); 
-        Grid.SetColumn(bP90, 1); Grid.SetColumn(bM90, 2); Grid.SetColumn(bP180, 3); Grid.SetColumn(bM180, 4);
-        
-        gBrg.Children.Add(txtBearing);
-        gBrg.Children.Add(bP90); gBrg.Children.Add(bM90); gBrg.Children.Add(bP180); gBrg.Children.Add(bM180);
-        grpBrg.Child = gBrg;
-        spData.Children.Add(grpBrg);
+        // Bearing Label
+        Label lblBrg = UITheme.CreateLabel("BEARING (DDD.MMSS)");
+        Grid.SetRow(lblBrg, 0); Grid.SetColumnSpan(lblBrg, 2);
+        gInputMaster.Children.Add(lblBrg);
 
-        lblBearingTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, -8, 0, 8) };
-        spData.Children.Add(lblBearingTrace);
+        // txtBearing (Row 1, Col 0)
+        txtBearing = UITheme.CreateInputBox(); 
+        txtBearing.Height = 35;
+        txtBearing.PreviewKeyDown += Input_PreviewKeyDown;
+        Grid.SetRow(txtBearing, 1); Grid.SetColumn(txtBearing, 0);
+        gInputMaster.Children.Add(txtBearing);
 
-        spData.Children.Add(UITheme.CreateLabel("DISTANCE (m)"));
-        Grid gDist = new Grid();
-        gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
-        gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
+        // Bearing Buttons (Row 1, Col 1)
+        Grid gBrgBtns = new Grid();
+        for (int i = 0; i < 4; i++) gBrgBtns.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
 
-        txtDistance = UITheme.CreateInputBox(); txtDistance.PreviewKeyDown += Input_PreviewKeyDown;
-        Grid.SetColumn(txtDistance, 0);
-        gDist.Children.Add(txtDistance);
+        Button CreateBrgBtn(string text, string tip, double delta) {
+            Button b = new Button() { Content = text, Width = 45, Height = 35, Margin = new Thickness(3, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
+            b.Click += (s, e) => { ModifyBearing(delta); txtBearing.Focus(); txtBearing.SelectAll(); };
+            return b;
+        }
 
-        Button bSS = new Button() { Content = "\u2600 SS", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "Open Side Shot/Offset Menu (PGDN)" };
+        Button bP90 = CreateBrgBtn("+90\u00B0", "\u21BB Rotate bearing +90\u00B0", 90);
+        Button bM90 = CreateBrgBtn("-90\u00B0", "\u21BA Rotate bearing -90\u00B0", -90);
+        Button bP180 = CreateBrgBtn("+180\u00B0", "\u21C5 Rotate bearing +180\u00B0", 180);
+        Button bM180 = CreateBrgBtn("-180\u00B0", "\u21C5 Rotate bearing -180\u00B0", -180);
+
+        Grid.SetColumn(bP90, 0); Grid.SetColumn(bM90, 1); Grid.SetColumn(bP180, 2); Grid.SetColumn(bM180, 3);
+        gBrgBtns.Children.Add(bP90); gBrgBtns.Children.Add(bM90); gBrgBtns.Children.Add(bP180); gBrgBtns.Children.Add(bM180);
+        Grid.SetRow(gBrgBtns, 1); Grid.SetColumn(gBrgBtns, 1);
+        gInputMaster.Children.Add(gBrgBtns);
+
+        // Bearing Trace (Row 2)
+        lblBearingTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 0, 0, 5) };
+        Grid.SetRow(lblBearingTrace, 2); Grid.SetColumnSpan(lblBearingTrace, 2);
+        gInputMaster.Children.Add(lblBearingTrace);
+
+        // Distance Label (Row 3)
+        Label lblDist = UITheme.CreateLabel("DISTANCE (m)");
+        Grid.SetRow(lblDist, 3); Grid.SetColumnSpan(lblDist, 2);
+        gInputMaster.Children.Add(lblDist);
+
+        // txtDistance (Row 4, Col 0)
+        txtDistance = UITheme.CreateInputBox();
+        txtDistance.Height = 35;
+        txtDistance.PreviewKeyDown += Input_PreviewKeyDown;
+        txtDistance.GotFocus += (s, e) => { txtDistance.BorderBrush = Brushes.WhiteSmoke; txtDistance.BorderThickness = new Thickness(2); };
+        txtDistance.LostFocus += (s, e) => { txtDistance.BorderBrush = Brushes.Gray; txtDistance.BorderThickness = new Thickness(1); };
+        Grid.SetRow(txtDistance, 4); Grid.SetColumn(txtDistance, 0);
+        gInputMaster.Children.Add(txtDistance);
+
+        // SIDE SHOT Button (Row 4, Col 1)
+        Button bSS = new Button() { 
+            Content = "\u2699 SIDE SHOT", 
+            Height = 35, 
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(3, 0, 0, 0), 
+            Background = Brushes.SteelBlue, 
+            Foreground = Brushes.White, 
+            FontWeight = FontWeights.Bold, 
+            FontSize = 12,
+            ToolTip = "Open Side Shot/Radiation menu (PGDN)" 
+        };
         bSS.Click += (s, e) => { OpenSideShotForm(); txtBearing.Focus(); txtBearing.SelectAll(); };
-        Grid.SetColumn(bSS, 1);
-        gDist.Children.Add(bSS);
+        Grid.SetRow(bSS, 4); Grid.SetColumn(bSS, 1);
+        gInputMaster.Children.Add(bSS);
 
-        spData.Children.Add(gDist);
+        // Distance Trace (Row 5)
+        lblDistanceTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 0, 0, 5) };
+        Grid.SetRow(lblDistanceTrace, 5); Grid.SetColumnSpan(lblDistanceTrace, 2);
+        gInputMaster.Children.Add(lblDistanceTrace);
 
-        lblDistanceTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, 2, 0, 8) };
-        spData.Children.Add(lblDistanceTrace);
-
+        spData.Children.Add(gInputMaster);
         cardData.Child = spData;
         Grid.SetRow(cardData, 1); mainG.Children.Add(cardData);
 
@@ -685,20 +718,22 @@ public class CadastreWpfWindow : System.Windows.Window
         Grid.SetRow(cardQuick, 2); mainG.Children.Add(cardQuick);
 
         // --- 3. LAYER SELECTION CARD ---
-        Border cardLay = UITheme.CreateCard(); cardLay.Margin = new Thickness(15, 0, 15, 15);
+        Border cardLay = UITheme.CreateCard(); 
+        cardLay.Margin = new Thickness(15, 0, 15, 10);
+        cardLay.Padding = new Thickness(5);
         StackPanel spLay = new StackPanel();
         spLay.Children.Add(UITheme.CreateLabel("ACTIVE LAYER (QWE ASD)"));
-        Grid g = new Grid();
+        Grid g = new Grid() { Margin = new Thickness(0) };
         g.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
         g.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
         for (int i = 0; i < 3; i++) g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
-        btnQ = UITheme.CreateLayerBtn("Q"); btnQ.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.Q].Name, btnQ);
-        btnW = UITheme.CreateLayerBtn("W"); btnW.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.W].Name, btnW);
-        btnE = UITheme.CreateLayerBtn("E"); btnE.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.E].Name, btnE);
-        btnA = UITheme.CreateLayerBtn("A"); btnA.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.A].Name, btnA);
-        btnS = UITheme.CreateLayerBtn("S"); btnS.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.S].Name, btnS);
-        btnD = UITheme.CreateLayerBtn("D"); btnD.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.D].Name, btnD);
+        btnQ = UITheme.CreateLayerBtn("Q"); btnQ.HorizontalAlignment = HorizontalAlignment.Stretch; btnQ.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.Q].Name, btnQ);
+        btnW = UITheme.CreateLayerBtn("W"); btnW.HorizontalAlignment = HorizontalAlignment.Stretch; btnW.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.W].Name, btnW);
+        btnE = UITheme.CreateLayerBtn("E"); btnE.HorizontalAlignment = HorizontalAlignment.Stretch; btnE.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.E].Name, btnE);
+        btnA = UITheme.CreateLayerBtn("A"); btnA.HorizontalAlignment = HorizontalAlignment.Stretch; btnA.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.A].Name, btnA);
+        btnS = UITheme.CreateLayerBtn("S"); btnS.HorizontalAlignment = HorizontalAlignment.Stretch; btnS.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.S].Name, btnS);
+        btnD = UITheme.CreateLayerBtn("D"); btnD.HorizontalAlignment = HorizontalAlignment.Stretch; btnD.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.D].Name, btnD);
 
         Grid.SetRow(btnQ, 0); Grid.SetColumn(btnQ, 0); Grid.SetRow(btnW, 0); Grid.SetColumn(btnW, 1); Grid.SetRow(btnE, 0); Grid.SetColumn(btnE, 2);
         Grid.SetRow(btnA, 1); Grid.SetColumn(btnA, 0); Grid.SetRow(btnS, 1); Grid.SetColumn(btnS, 1); Grid.SetRow(btnD, 1); Grid.SetColumn(btnD, 2);
