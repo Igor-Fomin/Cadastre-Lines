@@ -200,7 +200,7 @@ public static class CadMath
     {
         double deg1 = ParseDmsToDegrees(dms1); double deg2 = ParseDmsToDegrees(dms2);
         double resDeg = add ? (deg1 + deg2) : (deg1 - deg2);
-        return double.Parse(DegreesToDmsString(resDeg).Replace(".", "")); // Internal math still expects DDDMMSS sometimes but we are moving to DDD.MMSS
+        return double.Parse(DegreesToDmsString(resDeg));
     }
 
     public static bool TryParseBearing(string input, out double result)
@@ -209,12 +209,17 @@ public static class CadMath
         if (string.IsNullOrWhiteSpace(input)) return false;
         input = input.Trim();
 
-        // Strict formats: DDD.MMSS or DDD MMSS
-        // Only allow digits, one period or one space.
-        if (Regex.IsMatch(input, @"^\d+\.\d{1,4}$"))
+        // 1. Whole Degrees (e.g. "10")
+        if (Regex.IsMatch(input, @"^\d+$"))
         {
             if (double.TryParse(input, out result)) return true;
         }
+        // 2. Strict formats: DDD.MMSS
+        else if (Regex.IsMatch(input, @"^\d+\.\d{1,4}$"))
+        {
+            if (double.TryParse(input, out result)) return true;
+        }
+        // 3. Strict formats: DDD MMSS
         else if (Regex.IsMatch(input, @"^\d+ \d{1,4}$"))
         {
             string converted = input.Replace(" ", ".");
@@ -605,19 +610,19 @@ public class CadastreWpfWindow : System.Windows.Window
         spData.Children.Add(UITheme.CreateLabel("BEARING (DDD.MMSS) & ADJUSTMENTS"));
 
         // Visual Grouping for Bearing Toolset
-        Border grpAz = new Border() { Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)), CornerRadius = new CornerRadius(4), Padding = new Thickness(5), Margin = new Thickness(0, 0, 0, 10) };
-        Grid gAz = new Grid(); 
-        gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); 
-        gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
-        gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
-        gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
-        gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
-        gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
+        Border grpBrg = new Border() { Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)), CornerRadius = new CornerRadius(4), Padding = new Thickness(5), Margin = new Thickness(0, 0, 0, 10) };
+        Grid gBrg = new Grid(); 
+        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); 
+        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
+        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
+        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
+        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
+        gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
 
         txtBearing = UITheme.CreateInputBox(); txtBearing.PreviewKeyDown += Input_PreviewKeyDown;
         
-        Button btnCalcAz = new Button() { Content = "Calc", Height = 35, Margin = new Thickness(5, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "Open DMS calculator" };
-        btnCalcAz.Click += (s, e) => OpenCalculator(txtBearing, true);
+        Button btnCalcBrg = new Button() { Content = "Calc", Height = 35, Margin = new Thickness(5, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "Open DMS calculator" };
+        btnCalcBrg.Click += (s, e) => OpenCalculator(txtBearing, true);
 
         Button bP90 = new Button() { Content = "+90\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21BB Rotate bearing +90\u00B0" };
         bP90.Click += (s, e) => { ModifyBearing(90); txtBearing.Focus(); txtBearing.SelectAll(); };
@@ -628,13 +633,13 @@ public class CadastreWpfWindow : System.Windows.Window
         Button bM180 = new Button() { Content = "-180\u00B0", Width = 45, Height = 35, Margin = new Thickness(2, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = "\u21C5 Rotate bearing -180\u00B0" };
         bM180.Click += (s, e) => { ModifyBearing(-180); txtBearing.Focus(); txtBearing.SelectAll(); };
 
-        Grid.SetColumn(txtBearing, 0); Grid.SetColumn(btnCalcAz, 1);
+        Grid.SetColumn(txtBearing, 0); Grid.SetColumn(btnCalcBrg, 1);
         Grid.SetColumn(bP90, 2); Grid.SetColumn(bM90, 3); Grid.SetColumn(bP180, 4); Grid.SetColumn(bM180, 5);
         
-        gAz.Children.Add(txtBearing); gAz.Children.Add(btnCalcAz);
-        gAz.Children.Add(bP90); gAz.Children.Add(bM90); gAz.Children.Add(bP180); gAz.Children.Add(bM180);
-        grpAz.Child = gAz;
-        spData.Children.Add(grpAz);
+        gBrg.Children.Add(txtBearing); gBrg.Children.Add(btnCalcBrg);
+        gBrg.Children.Add(bP90); gBrg.Children.Add(bM90); gBrg.Children.Add(bP180); gBrg.Children.Add(bM180);
+        grpBrg.Child = gBrg;
+        spData.Children.Add(grpBrg);
 
         spData.Children.Add(UITheme.CreateLabel("DISTANCE (m)"));
         Grid gDist = new Grid(); gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gDist.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
@@ -986,7 +991,7 @@ public class CadastreWpfWindow : System.Windows.Window
             }
 
             UpdateRunningMisclosure(); CalculateArea();
-            UpdateGuideText("ENTER BEARING/DIST");
+            UpdateGuideText("ENTER BEARING & DIST");
             lblStatus.Content = "Start Set.";
             txtBearing.Focus();
             txtBearing.SelectAll();
@@ -999,7 +1004,7 @@ public class CadastreWpfWindow : System.Windows.Window
         double rawBrg, dist;
         if (!CadMath.TryParseBearing(brgStr, out rawBrg) || !double.TryParse(distStr, out dist))
         {
-            lblStatus.Content = "Invalid Format! Use DDD.MMSS or DDD MMSS";
+            lblStatus.Content = "Invalid Format!";
             lblStatus.Foreground = Brushes.Red;
             throw new System.Exception("Invalid Bearing or Distance format.");
         }
@@ -1335,7 +1340,7 @@ public class CadastreWpfWindow : System.Windows.Window
             decDeg += deltaDegrees;
             txtBearing.Text = CadMath.DegreesToDmsString(decDeg);
             
-            lblStatus.Content = $"Bearing Modified: {deltaDegrees}\u00B0";
+            lblStatus.Content = $"Bearing adjusted by {deltaDegrees:+#;-#;0}\u00B0";
             lblStatus.Foreground = Brushes.White;
 
             txtBearing.Focus();
@@ -1343,7 +1348,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
         else
         {
-            lblStatus.Content = "Invalid Format! Use DDD.MMSS or DDD MMSS";
+            lblStatus.Content = "Invalid Format!";
             lblStatus.Foreground = Brushes.Red;
         }
     }
@@ -1438,9 +1443,13 @@ public class CadastreWpfWindow : System.Windows.Window
         if (doc == null) return;
         var ed = doc.Editor;
 
-        this.Hide();
+        this.Visibility = System.Windows.Visibility.Collapsed;
+        System.Windows.Forms.Application.DoEvents();
+        
         PromptPointResult ppr = ed.GetPoint("\nPick Start Point: ");
-        this.Show();
+        
+        this.Visibility = System.Windows.Visibility.Visible;
+        this.Activate();
 
         if (ppr.Status == PromptStatus.OK)
         {
@@ -1456,10 +1465,15 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void TriggerCoordsWindow()
     {
-        this.Hide();
+        this.Visibility = System.Windows.Visibility.Collapsed;
+        System.Windows.Forms.Application.DoEvents();
+
         CoordsInputWindow w = new CoordsInputWindow(); w.Owner = this;
         bool? res = w.ShowDialog();
-        this.Show();
+        
+        this.Visibility = System.Windows.Visibility.Visible;
+        this.Activate();
+
         if (res == true)
         {
             if (w.PickRequested)
@@ -1467,9 +1481,14 @@ public class CadastreWpfWindow : System.Windows.Window
                 var doc = AcApp.DocumentManager.MdiActiveDocument;
                 if (doc != null)
                 {
-                    this.Hide();
+                    this.Visibility = System.Windows.Visibility.Collapsed;
+                    System.Windows.Forms.Application.DoEvents();
+
                     PromptPointResult ppr = doc.Editor.GetPoint("\nPick Start Point: ");
-                    this.Show();
+                    
+                    this.Visibility = System.Windows.Visibility.Visible;
+                    this.Activate();
+
                     if (ppr.Status == PromptStatus.OK)
                     {
                         SetStartPoint(ppr.Value);
@@ -1596,11 +1615,11 @@ public class SideShotWpfWindow : System.Windows.Window
 
         Border card = UITheme.CreateCard(); card.Margin = new Thickness(20); StackPanel pnl = new StackPanel();
 
-        Grid gAz = new Grid(); gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gAz.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
+        Grid gBrg = new Grid(); gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
         pnl.Children.Add(UITheme.CreateLabel("BEARING"));
         txtBrg = UITheme.CreateInputBox(); txtBrg.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; txtDist.Focus(); txtDist.SelectAll(); } };
-        Button btnCAz = new Button() { Content = "C", Height = 35 }; btnCAz.Click += (s, e) => { CalculatorWindow c = new CalculatorWindow(txtBrg.Text, true); c.Owner = this; if (c.ShowDialog() == true) txtBrg.Text = c.Result; };
-        Grid.SetColumn(txtBrg, 0); Grid.SetColumn(btnCAz, 1); gAz.Children.Add(txtBrg); gAz.Children.Add(btnCAz); pnl.Children.Add(gAz); pnl.Children.Add(new Border() { Height = 15 });
+        Button btnCBrg = new Button() { Content = "C", Height = 35 }; btnCBrg.Click += (s, e) => { CalculatorWindow c = new CalculatorWindow(txtBrg.Text, true); c.Owner = this; if (c.ShowDialog() == true) txtBrg.Text = c.Result; };
+        Grid.SetColumn(txtBrg, 0); Grid.SetColumn(btnCBrg, 1); gBrg.Children.Add(txtBrg); gBrg.Children.Add(btnCBrg); pnl.Children.Add(gBrg); pnl.Children.Add(new Border() { Height = 15 });
 
         Grid gDst = new Grid(); gDst.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gDst.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
         pnl.Children.Add(UITheme.CreateLabel("DISTANCE"));
