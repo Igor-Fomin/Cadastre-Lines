@@ -379,7 +379,6 @@ public class CadastreWpfWindow : System.Windows.Window
     private AppSettings _config;
     private string _currentLayer = "BOUNDARY_SUBJECT";
     private bool _isInitializing = true;
-    private int _lastTabIndex = 0;
     private bool _isBusy = false;
 
     // Controls
@@ -389,22 +388,22 @@ public class CadastreWpfWindow : System.Windows.Window
     private TextBlock txtRunningClosure = null!;
     private TextBlock txtAreaInfo = null!;
     private TextBlock lblGuide = null!;
-    private TabControl mainTabs = null!;
+    private Button btnSound = null!;
 
     // Buttons
     private Button btnQ = null!, btnW = null!, btnE = null!, btnA = null!, btnS = null!, btnD = null!;
 
-    // Settings UI
-    private ComboBox cmbSound = null!;
-    private CheckBox setChkAudio = null!;
-
-    private class TextUiRow
+    private bool EnsureQuiescent()
     {
-        public ComboBox CmbStyle; public TextBox TxtSize; public Button BtnColor; public CheckBox ChkMText; public CheckBox ChkMask; public CheckBox ChkVisible;
-        public TextSettings SettingsRef;
-        public string AssociatedLayer;
+        if (!_doc.Editor.IsQuiescent)
+        {
+            lblStatus.Content = "BUSY: PRESS ESC FIRST";
+            lblStatus.Foreground = Brushes.OrangeRed;
+            return false;
+        }
+        lblStatus.Foreground = Brushes.White;
+        return true;
     }
-    private List<TextUiRow> _textUiRows = new List<TextUiRow>();
     #endregion
 
     #region Constructor & Cleanup
@@ -422,8 +421,6 @@ public class CadastreWpfWindow : System.Windows.Window
         HighlightActiveLayer(btnW);
 
         this.Loaded += (s, e) => {
-            PopulateComboBoxes();
-            UpdateUIFromConfig();
             _isInitializing = false;
         };
 
@@ -432,7 +429,6 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void CadastreWpfWindow_Closed(object? sender, EventArgs e)
     {
-        // Cleanup resources or event subscriptions if any were added to DocumentManager
     }
     #endregion
 
@@ -462,7 +458,6 @@ public class CadastreWpfWindow : System.Windows.Window
     private void SetBusy(bool busy)
     {
         _isBusy = busy;
-        if (mainTabs != null) mainTabs.IsEnabled = !busy;
         if (txtBearing != null) txtBearing.IsEnabled = !busy;
         if (txtDistance != null) txtDistance.IsEnabled = !busy;
         
@@ -474,18 +469,6 @@ public class CadastreWpfWindow : System.Windows.Window
         {
             System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
         }
-    }
-
-    private bool EnsureQuiescent()
-    {
-        if (!_doc.Editor.IsQuiescent)
-        {
-            lblStatus.Content = "BUSY: PRESS ESC FIRST";
-            lblStatus.Foreground = Brushes.OrangeRed;
-            return false;
-        }
-        lblStatus.Foreground = Brushes.White;
-        return true;
     }
     #endregion
 
@@ -538,19 +521,23 @@ public class CadastreWpfWindow : System.Windows.Window
         this.Topmost = true; this.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         this.Background = UITheme.BackgroundBrush;
 
-        mainTabs = new TabControl() { Background = Brushes.Transparent, BorderThickness = new Thickness(0) };
-        mainTabs.Items.Add(new TabItem() { Header = " INPUT ", Content = BuildInputTab(), FontSize = 14, FontWeight = FontWeights.Bold });
-        mainTabs.Items.Add(new TabItem() { Header = " CONFIG ", Content = BuildSettingsTab(), FontSize = 14, FontWeight = FontWeights.Bold });
-        mainTabs.Items.Add(new TabItem() { Header = " ABOUT ", Content = BuildAboutTab(), FontSize = 14, FontWeight = FontWeights.Bold });
-        mainTabs.SelectionChanged += MainTabs_SelectionChanged;
-
         Grid mainGrid = new Grid();
-        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) });
-        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
-        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
-        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(30) });
+        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 0: Header Icons
+        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) }); // 1: Main Content
+        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 2: Closure Panel
+        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 3: Footer
+        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(30) }); // 4: Status Bar
 
-        mainGrid.Children.Add(mainTabs); Grid.SetRow(mainTabs, 0);
+        // Header Icons
+        UIElement headerIcons = BuildHeaderIcons();
+        Grid.SetRow(headerIcons, 0); mainGrid.Children.Add(headerIcons);
+
+        // Main Content (Directly Input Tab)
+        object inputContent = BuildInputTab();
+        if (inputContent is UIElement uiContent)
+        {
+            Grid.SetRow(uiContent, 1); mainGrid.Children.Add(uiContent);
+        }
 
         // Closure / Area Panel
         Border closureBorder = new Border() { Background = new SolidColorBrush(Color.FromRgb(25, 25, 25)), Padding = new Thickness(8) };
@@ -560,23 +547,67 @@ public class CadastreWpfWindow : System.Windows.Window
         spClose.Children.Add(txtRunningClosure);
         spClose.Children.Add(txtAreaInfo);
         closureBorder.Child = spClose;
-        Grid.SetRow(closureBorder, 1); mainGrid.Children.Add(closureBorder);
+        Grid.SetRow(closureBorder, 2); mainGrid.Children.Add(closureBorder);
 
         Border footer = new Border() { Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)), Padding = new Thickness(5) };
         StackPanel fs = new StackPanel() { HorizontalAlignment = HorizontalAlignment.Center };
         fs.Children.Add(UITheme.CreateFooterText("END: E & N | PGDN: PICK | PGUP: Side Shot | INS: Comment | DEL: Undo", Brushes.WhiteSmoke));
         fs.Children.Add(UITheme.CreateFooterText("ARROWS: \u00B1180\u00B0 / \u00B190\u00B0 | QWE-ASD: Layers (Input Tab Only)", Brushes.LightGray));
         footer.Child = fs;
-        Grid.SetRow(footer, 2); mainGrid.Children.Add(footer);
+        Grid.SetRow(footer, 3); mainGrid.Children.Add(footer);
 
         Border st = new Border() { Background = UITheme.ActionBlue };
         lblStatus = new Label() { Content = "USE END OR PGDN TO START NEW LINE", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
         st.Child = lblStatus;
-        Grid.SetRow(st, 3); mainGrid.Children.Add(st);
+        Grid.SetRow(st, 4); mainGrid.Children.Add(st);
 
         this.Content = mainGrid;
         this.PreviewKeyDown += Window_PreviewKeyDown;
         UpdateGuideText("USE END OR PGDN TO START NEW LINE");
+        UpdateSoundIcon();
+    }
+
+    private UIElement BuildHeaderIcons()
+    {
+        StackPanel sp = new StackPanel() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 5, 15, 0) };
+        
+        btnSound = new Button() { Content = "\ud83d\udd0a", FontSize = 18, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = "Toggle Audio Feedback" };
+        btnSound.Click += (s, e) => { 
+            _config.AudioFeedback = !_config.AudioFeedback; 
+            AppSettings.Save(_config);
+            UpdateSoundIcon(); 
+            if (_config.AudioFeedback) PlayAudio();
+        };
+
+        Button btnAbout = new Button() { Content = "?", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = Brushes.LightGray, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Margin = new Thickness(10, 0, 0, 0), Cursor = Cursors.Hand, ToolTip = "About / Help" };
+        btnAbout.Click += (s, e) => ShowAboutPopup();
+
+        sp.Children.Add(btnSound);
+        sp.Children.Add(btnAbout);
+        return sp;
+    }
+
+    private void UpdateSoundIcon()
+    {
+        if (btnSound == null) return;
+        btnSound.Foreground = _config.AudioFeedback ? UITheme.AccentColor : Brushes.Gray;
+    }
+
+    private void ShowAboutPopup()
+    {
+        string aboutMsg = "CADASTRE PRO\n\n" +
+                          "WORKFLOW:\n" +
+                          "1. PgUp: Start Point Menu (Type or Pick).\n" +
+                          "2. Enter Bearing/Dist (Auto-Calc available).\n" +
+                          "3. Press Enter to Draw.\n" +
+                          "4. Use QWE-ASD to switch layers.\n\n" +
+                          "HOTKEYS:\n" +
+                          " • End/PgDn: New Line / Pick Point\n" +
+                          " • PgUp: Side Shot Menu\n" +
+                          " • Insert: Add Comment\n" +
+                          " • Delete: Undo Last\n" +
+                          " • Arrows: Rotate Bearing";
+        MessageBox.Show(aboutMsg, "About Cadastre Pro", MessageBoxButton.OK, MessageBoxImage.Information);
     }
     #endregion
 
@@ -757,160 +788,6 @@ public class CadastreWpfWindow : System.Windows.Window
 
         return mainG;
     }
-
-    private object BuildSettingsTab()
-    {
-        ScrollViewer scroll = new ScrollViewer() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        StackPanel pnl = new StackPanel() { Margin = new Thickness(15) };
-
-        Border cardT = UITheme.CreateCard(); StackPanel spT = new StackPanel();
-        spT.Children.Add(UITheme.CreateLabel("TEXT CONFIGURATION"));
-        Grid gHead = new Grid();
-        gHead.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(60) });
-        gHead.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
-        gHead.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        gHead.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        gHead.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        gHead.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        gHead.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(30) });
-        void AddHead(string t, int c) { var l = new Label() { Content = t, Foreground = Brushes.Gray, FontSize = 9, Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Center }; Grid.SetColumn(l, c); gHead.Children.Add(l); }
-        AddHead("Type", 0); AddHead("Style", 1); AddHead("Size", 2); AddHead("Col", 3); AddHead("MText", 4); AddHead("Mask", 5); AddHead("Vis", 6);
-        spT.Children.Add(gHead);
-
-        _textUiRows.Clear();
-        spT.Children.Add(BuildTextRow("Bearing", _config.TextBrg, CadConstants.LAY_TXT_BRG));
-        spT.Children.Add(BuildTextRow("Distance", _config.TextDist, CadConstants.LAY_TXT_DIST));
-        spT.Children.Add(BuildTextRow("Point #", _config.TextPt, CadConstants.LAY_TXT_PTNUM));
-        spT.Children.Add(BuildTextRow("Comment", _config.TextComm, CadConstants.LAY_TXT_SYMB));
-
-        Button btnResetT = UITheme.CreateActionBtn("RESET TEXT TO DEFAULT", Brushes.DimGray);
-        btnResetT.Click += (s, e) => { _config.ResetText(); UpdateUIFromConfig(); };
-        spT.Children.Add(btnResetT);
-        cardT.Child = spT; pnl.Children.Add(cardT);
-
-        Border cardO = UITheme.CreateCard(); StackPanel spO = new StackPanel();
-        spO.Children.Add(UITheme.CreateLabel("GENERAL OPTIONS"));
-
-        setChkAudio = UITheme.CreateToggle("Enable Audio Feedback");
-
-        cmbSound = new ComboBox() { Height = 25, Margin = new Thickness(5) };
-        cmbSound.ItemsSource = new List<string> { "Beep", "Asterisk", "Exclamation", "Hand", "Question" };
-
-        spO.Children.Add(setChkAudio); spO.Children.Add(cmbSound);
-        cardO.Child = spO; pnl.Children.Add(cardO);
-
-        Button btnSave = UITheme.CreateActionBtn("SAVE SETTINGS", Brushes.Teal);
-        btnSave.Click += (s, e) => ExecuteUiAction(() => SaveSettings(false));
-        pnl.Children.Add(btnSave);
-
-        PopulateComboBoxes();
-        UpdateUIFromConfig();
-
-        scroll.Content = pnl; return scroll;
-    }
-
-    private Grid BuildTextRow(string label, TextSettings ts, string layerName)
-    {
-        Grid g = new Grid(); g.Margin = new Thickness(0, 2, 0, 5);
-        g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(60) });
-        g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
-        g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(40) });
-        g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(30) });
-
-        Label l = new Label() { Content = label, Foreground = Brushes.Cyan, VerticalAlignment = VerticalAlignment.Center, FontSize = 10 };
-        ComboBox cb = UITheme.CreateLayerCombo(); cb.Height = 25;
-        TextBox tb = UITheme.CreateInputBox(); tb.Height = 25; tb.FontSize = 12;
-        Button bc = UITheme.CreateColorBtn(ts.ColorIndex);
-        CheckBox cm = new CheckBox() { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-        CheckBox ck = new CheckBox() { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-        CheckBox cv = new CheckBox() { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-
-        bc.Click += (s, e) => {
-            Autodesk.AutoCAD.Windows.ColorDialog cd = new Autodesk.AutoCAD.Windows.ColorDialog();
-            if (cd.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                ts.ColorIndex = cd.Color.ColorIndex;
-                bc.Background = new SolidColorBrush(UITheme.GetWpfColor(ts.ColorIndex));
-                bc.Content = "";
-            }
-        };
-
-        Grid.SetColumn(l, 0); Grid.SetColumn(cb, 1); Grid.SetColumn(tb, 2); Grid.SetColumn(bc, 3); Grid.SetColumn(cm, 4); Grid.SetColumn(ck, 5); Grid.SetColumn(cv, 6);
-        g.Children.Add(l); g.Children.Add(cb); g.Children.Add(tb); g.Children.Add(bc); g.Children.Add(cm); g.Children.Add(ck); g.Children.Add(cv);
-
-        _textUiRows.Add(new TextUiRow() { CmbStyle = cb, TxtSize = tb, BtnColor = bc, ChkMText = cm, ChkMask = ck, ChkVisible = cv, SettingsRef = ts, AssociatedLayer = layerName });
-        return g;
-    }
-
-    private object BuildAboutTab()
-    {
-        ScrollViewer scroll = new ScrollViewer() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        StackPanel pnl = new StackPanel() { Margin = new Thickness(15) };
-        TextBlock Header(string txt) => new TextBlock() { Text = txt, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Brushes.Cyan, Margin = new Thickness(0, 15, 0, 5) };
-        TextBlock Body(string txt) => new TextBlock() { Text = txt, FontSize = 12, Foreground = Brushes.WhiteSmoke, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 5) };
-        TextBlock Bullet(string txt) => new TextBlock() { Text = " • " + txt, FontSize = 12, Foreground = Brushes.LightGray, TextWrapping = TextWrapping.Wrap };
-
-        pnl.Children.Add(Header("WORKFLOW"));
-        pnl.Children.Add(Body("1. PgUp: Open Coords Window (Type or Pick)."));
-        pnl.Children.Add(Body("2. Enter Bearing/Dist (Auto-Calc available)."));
-        pnl.Children.Add(Body("3. Press Enter to Draw."));
-        pnl.Children.Add(Body("4. Use QWE-ASD to switch layers."));
-
-        pnl.Children.Add(Header("HOTKEYS"));
-        pnl.Children.Add(Bullet("PgUp: Start Point Menu"));
-        pnl.Children.Add(Bullet("PgDn: Side Shot Menu"));
-        pnl.Children.Add(Bullet("Insert: Add Comment"));
-        pnl.Children.Add(Bullet("Delete: Undo Last"));
-        pnl.Children.Add(Bullet("Arrows: Rotate Bearing"));
-
-        scroll.Content = pnl; return scroll;
-    }
-    #endregion
-
-    #region Settings Logic
-    private void SaveSettings(bool silent)
-    {
-        foreach (var r in _textUiRows)
-        {
-            r.SettingsRef.Style = r.CmbStyle.Text;
-            if (double.TryParse(r.TxtSize.Text, out double d)) r.SettingsRef.Size = d;
-            r.SettingsRef.IsMText = (r.ChkMText.IsChecked == true);
-            r.SettingsRef.Masking = (r.ChkMask.IsChecked == true);
-            r.SettingsRef.Visible = (r.ChkVisible.IsChecked == true);
-            ToggleLayerVisibility(r.AssociatedLayer, r.SettingsRef.Visible);
-        }
-
-        _config.AudioFeedback = (setChkAudio.IsChecked == true);
-        _config.AudioSound = cmbSound.Text;
-
-        AppSettings.Save(_config);
-        UpdateLayerButtons();
-
-        if (!silent)
-        {
-            PlayAudio();
-            MessageBox.Show("Saved & Applied!");
-        }
-        try { AcApp.DocumentManager.MdiActiveDocument.Editor.Regen(); } catch { }
-    }
-
-    private void UpdateUIFromConfig()
-    {
-        foreach (var r in _textUiRows)
-        {
-            r.CmbStyle.Text = r.SettingsRef.Style;
-            r.TxtSize.Text = r.SettingsRef.Size.ToString();
-            r.ChkMText.IsChecked = r.SettingsRef.IsMText;
-            r.ChkMask.IsChecked = r.SettingsRef.Masking;
-            r.ChkVisible.IsChecked = r.SettingsRef.Visible;
-            r.BtnColor.Background = new SolidColorBrush(UITheme.GetWpfColor(r.SettingsRef.ColorIndex));
-            r.BtnColor.Content = (r.SettingsRef.ColorIndex == 256 || r.SettingsRef.ColorIndex == 0) ? "By" : "";
-        }
-        setChkAudio.IsChecked = _config.AudioFeedback; cmbSound.SelectedItem = _config.AudioSound;
-    }
     #endregion
 
     #region Calculation & Analysis
@@ -941,22 +818,8 @@ public class CadastreWpfWindow : System.Windows.Window
     #endregion
 
     #region UI & Input Handlers
-    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (e.Source is TabControl && !_isInitializing)
-        {
-            if (_lastTabIndex == 1 && mainTabs.SelectedIndex != 1)
-            {
-                this.Dispatcher.BeginInvoke(new Action(() => ExecuteUiAction(() => SaveSettings(silent: true))), System.Windows.Threading.DispatcherPriority.Background);
-            }
-            _lastTabIndex = mainTabs.SelectedIndex;
-        }
-    }
-
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (mainTabs.SelectedIndex == 1) return;
-
         if (LayerConfig.ContainsKey(e.Key))
         {
             var def = LayerConfig[e.Key];
@@ -1395,27 +1258,6 @@ public class CadastreWpfWindow : System.Windows.Window
         {
             System.Console.Beep();
         }
-    }
-
-    private void PopulateComboBoxes()
-    {
-        if (_doc == null || _doc.IsDisposed) return;
-        try
-        {
-            List<string> layers = new List<string>(); List<string> styles = new List<string>();
-            using (DocumentLock loc = _doc.LockDocument())
-            using (Transaction tr = _doc.TransactionManager.StartTransaction())
-            {
-                LayerTable lt = (LayerTable)tr.GetObject(_doc.Database.LayerTableId, OpenMode.ForRead);
-                foreach (ObjectId id in lt) { layers.Add(((LayerTableRecord)tr.GetObject(id, OpenMode.ForRead)).Name); }
-                TextStyleTable tst = (TextStyleTable)tr.GetObject(_doc.Database.TextStyleTableId, OpenMode.ForRead);
-                foreach (ObjectId id in tst) { styles.Add(((TextStyleTableRecord)tr.GetObject(id, OpenMode.ForRead)).Name); }
-                tr.Commit();
-            }
-            layers.Sort(); styles.Sort();
-            foreach (var r in _textUiRows) if (r.CmbStyle != null) r.CmbStyle.ItemsSource = styles;
-        }
-        catch { }
     }
 
     private void UpdateLayerButtons()
