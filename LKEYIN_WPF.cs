@@ -378,16 +378,11 @@ public class CadastreWpfWindow : System.Windows.Window
     private List<Point3d> _traversePath = new List<Point3d>();
     private AppSettings _config;
     private string _currentLayer = "BOUNDARY_SUBJECT";
-    private bool _isInitializing = true;
     private bool _isBusy = false;
 
     // Controls
     private TextBox txtBearing = null!, txtDistance = null!;
     private TextBlock lblBearingTrace = null!, lblDistanceTrace = null!;
-    private Label lblStatus = null!;
-    private TextBlock txtRunningClosure = null!;
-    private TextBlock txtAreaInfo = null!;
-    private TextBlock lblGuide = null!;
     private Button btnSound = null!;
 
     // Buttons
@@ -397,11 +392,9 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         if (!_doc.Editor.IsQuiescent)
         {
-            lblStatus.Content = "BUSY: PRESS ESC FIRST";
-            lblStatus.Foreground = Brushes.OrangeRed;
+            _doc.Editor.WriteMessage("\n[BUSY] Please press ESC in AutoCAD before using the tool.");
             return false;
         }
-        lblStatus.Foreground = Brushes.White;
         return true;
     }
     #endregion
@@ -419,10 +412,6 @@ public class CadastreWpfWindow : System.Windows.Window
         // Default to 'W' layer def from config
         _currentLayer = LayerConfig[Key.W].Name;
         HighlightActiveLayer(btnW);
-
-        this.Loaded += (s, e) => {
-            _isInitializing = false;
-        };
 
         this.Closed += CadastreWpfWindow_Closed;
     }
@@ -443,11 +432,11 @@ public class CadastreWpfWindow : System.Windows.Window
         }
         catch (Autodesk.AutoCAD.Runtime.Exception ex)
         {
-            AcApp.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\n[AutoCAD Error] {ex.Message}");
+            _doc.Editor.WriteMessage($"\n[AutoCAD Error] {ex.Message}");
         }
         catch (System.Exception ex)
         {
-            AcApp.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\n[System Error] {ex.Message}");
+            _doc.Editor.WriteMessage($"\n[System Error] {ex.Message}");
         }
         finally
         {
@@ -517,16 +506,13 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void InitializeCustomUI()
     {
-        this.Title = "CADASTRE PRO"; this.Width = 600; this.Height = 950;
+        this.Title = "CADASTRE PRO"; this.Width = 600; this.Height = 750;
         this.Topmost = true; this.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         this.Background = UITheme.BackgroundBrush;
 
         Grid mainGrid = new Grid();
         mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 0: Header Icons
         mainGrid.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) }); // 1: Main Content
-        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 2: Closure Panel
-        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 3: Footer
-        mainGrid.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(30) }); // 4: Status Bar
 
         // Header Icons
         UIElement headerIcons = BuildHeaderIcons();
@@ -539,31 +525,8 @@ public class CadastreWpfWindow : System.Windows.Window
             Grid.SetRow(uiContent, 1); mainGrid.Children.Add(uiContent);
         }
 
-        // Closure / Area Panel
-        Border closureBorder = new Border() { Background = new SolidColorBrush(Color.FromRgb(25, 25, 25)), Padding = new Thickness(8) };
-        StackPanel spClose = new StackPanel();
-        txtRunningClosure = new TextBlock() { Text = "Misclosure: N/A", Foreground = Brushes.Cyan, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, FontSize = 12 };
-        txtAreaInfo = new TextBlock() { Text = "Area: 0 m²", Foreground = Brushes.Yellow, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
-        spClose.Children.Add(txtRunningClosure);
-        spClose.Children.Add(txtAreaInfo);
-        closureBorder.Child = spClose;
-        Grid.SetRow(closureBorder, 2); mainGrid.Children.Add(closureBorder);
-
-        Border footer = new Border() { Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)), Padding = new Thickness(5) };
-        StackPanel fs = new StackPanel() { HorizontalAlignment = HorizontalAlignment.Center };
-        fs.Children.Add(UITheme.CreateFooterText("END: E & N | PGDN: PICK | PGUP: Side Shot | INS: Comment | DEL: Undo", Brushes.WhiteSmoke));
-        fs.Children.Add(UITheme.CreateFooterText("ARROWS: \u00B1180\u00B0 / \u00B190\u00B0 | QWE-ASD: Layers (Input Tab Only)", Brushes.LightGray));
-        footer.Child = fs;
-        Grid.SetRow(footer, 3); mainGrid.Children.Add(footer);
-
-        Border st = new Border() { Background = UITheme.ActionBlue };
-        lblStatus = new Label() { Content = "USE END OR PGDN TO START NEW LINE", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
-        st.Child = lblStatus;
-        Grid.SetRow(st, 4); mainGrid.Children.Add(st);
-
         this.Content = mainGrid;
         this.PreviewKeyDown += Window_PreviewKeyDown;
-        UpdateGuideText("USE END OR PGDN TO START NEW LINE");
         UpdateSoundIcon();
     }
 
@@ -615,17 +578,13 @@ public class CadastreWpfWindow : System.Windows.Window
     private object BuildInputTab()
     {
         Grid mainG = new Grid();
-        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 0: Guide
-        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 1: Data Card
-        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 2: Quick Actions Card
-        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 3: Layer Card
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 0: Data Card
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 1: Quick Actions Card
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 2: Layer Card
         mainG.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) });
 
-        lblGuide = new TextBlock() { Text = "START", Foreground = UITheme.GuideColor, FontSize = 16, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 15) };
-        Grid.SetRow(lblGuide, 0); mainG.Children.Add(lblGuide);
-
         // --- 1. DATA ENTRY CARD ---
-        Border cardData = UITheme.CreateCard(); cardData.Margin = new Thickness(15, 0, 15, 10);
+        Border cardData = UITheme.CreateCard(); cardData.Margin = new Thickness(15, 10, 15, 10);
         StackPanel spData = new StackPanel();
 
         // --- Traverse Setup Row (E & N / PICK) ---
@@ -737,7 +696,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         spData.Children.Add(gInputMaster);
         cardData.Child = spData;
-        Grid.SetRow(cardData, 1); mainG.Children.Add(cardData);
+        Grid.SetRow(cardData, 0); mainG.Children.Add(cardData);
 
         // --- 2. QUICK ACTIONS CARD ---
         Border cardQuick = UITheme.CreateCard(); cardQuick.Margin = new Thickness(15, 0, 15, 10);
@@ -758,11 +717,11 @@ public class CadastreWpfWindow : System.Windows.Window
         gActions.Children.Add(bUndo); gActions.Children.Add(bComm);
 
         cardQuick.Child = gActions;
-        Grid.SetRow(cardQuick, 2); mainG.Children.Add(cardQuick);
+        Grid.SetRow(cardQuick, 1); mainG.Children.Add(cardQuick);
 
         // --- 3. LAYER SELECTION CARD ---
         Border cardLay = UITheme.CreateCard(); 
-        cardLay.Margin = new Thickness(15, 0, 15, 10);
+        cardLay.Margin = new Thickness(15, 0, 15, 15);
         cardLay.Padding = new Thickness(5);
         StackPanel spLay = new StackPanel();
         spLay.Children.Add(UITheme.CreateLabel("ACTIVE LAYER (QWE ASD)"));
@@ -784,7 +743,7 @@ public class CadastreWpfWindow : System.Windows.Window
         g.Children.Add(btnQ); g.Children.Add(btnW); g.Children.Add(btnE);
         g.Children.Add(btnA); g.Children.Add(btnS); g.Children.Add(btnD);
         spLay.Children.Add(g); cardLay.Child = spLay;
-        Grid.SetRow(cardLay, 3); mainG.Children.Add(cardLay);
+        Grid.SetRow(cardLay, 2); mainG.Children.Add(cardLay);
 
         return mainG;
     }
@@ -793,27 +752,10 @@ public class CadastreWpfWindow : System.Windows.Window
     #region Calculation & Analysis
     private void CalculateArea()
     {
-        if (_traversePath.Count < 2) { txtAreaInfo.Text = "Area: N/A"; return; }
-        List<Point3d> poly = new List<Point3d>(_traversePath);
-        if (poly[0].DistanceTo(poly[poly.Count - 1]) > 0.001) poly.Add(poly[0]);
-        double area = 0.0;
-        for (int i = 0; i < poly.Count - 1; i++)
-            area += (poly[i].X * poly[i + 1].Y) - (poly[i + 1].X * poly[i].Y);
-        area = Math.Abs(area) / 2.0;
-        txtAreaInfo.Text = $"Area: {area:0.00} m²";
     }
 
     private void UpdateRunningMisclosure()
     {
-        if (_traversePath.Count < 2) { txtRunningClosure.Text = "Misclosure: N/A"; return; }
-        Point3d start = _traversePath[0]; Point3d end = _traversePath[_traversePath.Count - 1];
-        double mis = start.DistanceTo(end);
-        double dx = start.X - end.X; double dy = start.Y - end.Y;
-        double rad = Math.Atan2(dy, dx); double deg = 90.0 - (rad * 180.0 / Math.PI); if (deg < 0) deg += 360.0;
-        string bearing = CadMath.DegreesToDmsString(deg);
-        double perim = 0; for (int i = 0; i < _traversePath.Count - 1; i++) perim += _traversePath[i].DistanceTo(_traversePath[i + 1]);
-        double prec = (mis > 0.0001) ? Math.Round(perim / mis) : 0;
-        txtRunningClosure.Text = $"Err: {mis:0.000}m (1:{prec}) @ {bearing}";
     }
     #endregion
 
@@ -933,8 +875,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
         catch
         {
-            lblStatus.Content = "Invalid Math Expression";
-            lblStatus.Foreground = Brushes.OrangeRed;
+            _doc.Editor.WriteMessage("\n[Error] Invalid Math Expression.");
             return null;
         }
     }
@@ -959,14 +900,12 @@ public class CadastreWpfWindow : System.Windows.Window
 
             _lastCreatedVertex = newPt; _currentPoint = newPt; _traversePath.Add(newPt);
 
-            UpdateRunningMisclosure(); CalculateArea(); PlayAudio(); PanToPoint(newPt); _doc.Editor.UpdateScreen();
+            CalculateArea(); PlayAudio(); PanToPoint(newPt); _doc.Editor.UpdateScreen();
             
             this.Dispatcher.BeginInvoke(new Action(() => {
                 txtBearing.Focus();
                 txtBearing.SelectAll();
             }), System.Windows.Threading.DispatcherPriority.Input);
-
-            UpdateGuideText("LINE ADDED. NEXT?");
         }
     }
 
@@ -995,9 +934,7 @@ public class CadastreWpfWindow : System.Windows.Window
                 tr.Commit();
             }
 
-            UpdateRunningMisclosure(); CalculateArea();
-            UpdateGuideText("ENTER BEARING & DIST");
-            lblStatus.Content = "Start Set.";
+            CalculateArea();
             lblBearingTrace.Text = ""; lblDistanceTrace.Text = "";
             txtBearing.Focus();
             txtBearing.SelectAll();
@@ -1010,13 +947,10 @@ public class CadastreWpfWindow : System.Windows.Window
         double rawBrg, dist;
         if (!CadMath.TryParseBearing(brgStr, out rawBrg) || !double.TryParse(distStr, out dist))
         {
-            lblStatus.Content = "Invalid Format!";
-            lblStatus.Foreground = Brushes.Red;
+            _doc.Editor.WriteMessage("\n[Error] Invalid Bearing or Distance format.");
             throw new System.Exception("Invalid Bearing or Distance format.");
         }
         
-        lblStatus.Foreground = Brushes.White;
-
         // Ensure layer exists before database operation
         bool layerExists = false;
         using (Transaction checkTr = btr.Database.TransactionManager.StartTransaction())
@@ -1089,8 +1023,7 @@ public class CadastreWpfWindow : System.Windows.Window
             }
 
             if (_traversePath.Count > 1) _traversePath.RemoveAt(_traversePath.Count - 1);
-            UpdateRunningMisclosure(); CalculateArea(); tr.Commit(); _doc.Editor.UpdateScreen();
-            lblStatus.Content = "Undo performed.";
+            CalculateArea(); tr.Commit(); _doc.Editor.UpdateScreen();
         }
     }
 
@@ -1303,8 +1236,6 @@ public class CadastreWpfWindow : System.Windows.Window
         active.BorderThickness = new Thickness(3); active.BorderBrush = Brushes.White;
     }
 
-    private void UpdateGuideText(string text) { if (lblGuide != null) lblGuide.Text = text; }
-
     private bool ValidateDocument()
     {
         var doc = AcApp.DocumentManager.MdiActiveDocument;
@@ -1325,16 +1256,14 @@ public class CadastreWpfWindow : System.Windows.Window
             decDeg += deltaDegrees;
             txtBearing.Text = CadMath.DegreesToDmsString(decDeg);
             
-            lblStatus.Content = $"Bearing adjusted by {deltaDegrees:+#;-#;0}\u00B0";
-            lblStatus.Foreground = Brushes.White;
+            _doc.Editor.WriteMessage($"\n[Bearing] Adjusted by {deltaDegrees:+#;-#;0}\u00B0");
 
             txtBearing.Focus();
             txtBearing.SelectAll();
         }
         else
         {
-            lblStatus.Content = "Invalid Format!";
-            lblStatus.Foreground = Brushes.Red;
+            _doc.Editor.WriteMessage("\n[Error] Invalid Bearing Format.");
         }
     }
 
@@ -1442,10 +1371,6 @@ public class CadastreWpfWindow : System.Windows.Window
             txtBearing.Focus();
             txtBearing.SelectAll();
         }
-        else if (ppr.Status == PromptStatus.Cancel)
-        {
-            lblStatus.Content = "Pick cancelled.";
-        }
     }
 
     private void TriggerCoordsWindow()
@@ -1479,10 +1404,6 @@ public class CadastreWpfWindow : System.Windows.Window
                         SetStartPoint(ppr.Value);
                         txtBearing.Focus();
                         txtBearing.SelectAll();
-                    }
-                    else if (ppr.Status == PromptStatus.Cancel)
-                    {
-                        lblStatus.Content = "Pick cancelled.";
                     }
                 }
             }
