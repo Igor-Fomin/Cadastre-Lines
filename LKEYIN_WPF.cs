@@ -124,13 +124,14 @@ public static class UITheme
     public static readonly Brush CardBrush = new SolidColorBrush(Color.FromRgb(45, 45, 48));
     public static readonly Brush InputBackground = new SolidColorBrush(Color.FromRgb(20, 20, 20));
     public static readonly Brush AccentColor = new SolidColorBrush(Color.FromRgb(0, 122, 204));
+    public static readonly Brush ActionBlue = new SolidColorBrush(Color.FromRgb(41, 128, 185));
     public static readonly Brush GuideColor = new SolidColorBrush(Color.FromRgb(0, 200, 0));
     
     private static readonly DropShadowEffect CardShadow = new DropShadowEffect() { BlurRadius = 8, ShadowDepth = 2, Opacity = 0.4 };
     private static readonly FontFamily MonoFont = new FontFamily("Consolas");
 
     public static Border CreateCard() { return new Border() { Background = CardBrush, CornerRadius = new CornerRadius(4), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 10), Effect = CardShadow }; }
-    public static TextBox CreateInputBox() { return new TextBox() { Background = InputBackground, Foreground = Brushes.Cyan, FontFamily = MonoFont, FontSize = 16, Height = 35, VerticalContentAlignment = VerticalAlignment.Center, BorderThickness = new Thickness(1), BorderBrush = Brushes.Gray, Padding = new Thickness(5), CaretBrush = Brushes.White }; }
+    public static TextBox CreateInputBox() { return new TextBox() { Background = InputBackground, Foreground = Brushes.Cyan, FontFamily = MonoFont, FontSize = 16, Height = 45, VerticalContentAlignment = VerticalAlignment.Center, BorderThickness = new Thickness(1), BorderBrush = Brushes.Gray, Padding = new Thickness(5), CaretBrush = Brushes.White }; }
     public static ComboBox CreateLayerCombo() { return new ComboBox() { Height = 30, Margin = new Thickness(2), IsEditable = true, Foreground = Brushes.Black, FontSize = 12 }; }
     public static Label CreateLabel(string text) { return new Label() { Content = text, Foreground = Brushes.LightGray, FontSize = 11, FontWeight = FontWeights.Bold, Padding = new Thickness(0, 5, 0, 2) }; }
     public static TextBlock CreateFooterText(string text, Brush color) { return new TextBlock() { Text = text, Foreground = color, FontSize = 10, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(2) }; }
@@ -141,7 +142,7 @@ public static class UITheme
 
     public static UIElement CreateShortcutContent(string key, string description)
     {
-        TextBlock tb = new TextBlock() { TextAlignment = System.Windows.TextAlignment.Center };
+        TextBlock tb = new TextBlock() { TextAlignment = System.Windows.TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center, LineHeight = 12, LineStackingStrategy = LineStackingStrategy.BlockLineHeight };
         tb.Inlines.Add(new Run(key) { FontSize = 10, FontWeight = FontWeights.Bold });
         tb.Inlines.Add(new LineBreak());
         tb.Inlines.Add(new Run(description) { FontSize = 13 });
@@ -568,7 +569,7 @@ public class CadastreWpfWindow : System.Windows.Window
         footer.Child = fs;
         Grid.SetRow(footer, 2); mainGrid.Children.Add(footer);
 
-        Border st = new Border() { Background = UITheme.AccentColor };
+        Border st = new Border() { Background = UITheme.ActionBlue };
         lblStatus = new Label() { Content = "USE END OR PGDN TO START NEW LINE", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
         st.Child = lblStatus;
         Grid.SetRow(st, 3); mainGrid.Children.Add(st);
@@ -602,15 +603,15 @@ public class CadastreWpfWindow : System.Windows.Window
         gPos.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
         gPos.Margin = new Thickness(0, 0, 0, 10);
 
-        Button btnEN = UITheme.CreateActionBtn("", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        Button btnEN = UITheme.CreateActionBtn("", UITheme.ActionBlue);
         btnEN.Content = UITheme.CreateShortcutContent("End", "\ud83d\udccd E & N");
-        btnEN.Height = 40; btnEN.Margin = new Thickness(0, 0, 5, 0);
+        btnEN.Height = 45; btnEN.Margin = new Thickness(0, 0, 5, 0);
         btnEN.ToolTip = "Enter starting coordinates manually (Easting/Northing).";
         btnEN.Click += (s, e) => TriggerCoordsWindow();
 
-        Button btnPick = UITheme.CreateActionBtn("", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
+        Button btnPick = UITheme.CreateActionBtn("", UITheme.ActionBlue);
         btnPick.Content = UITheme.CreateShortcutContent("PgDn", "\ud83d\uddb1\ufe0f PICK");
-        btnPick.Height = 40; btnPick.Margin = new Thickness(5, 0, 0, 0);
+        btnPick.Height = 45; btnPick.Margin = new Thickness(5, 0, 0, 0);
         btnPick.ToolTip = "Select a starting point directly from the AutoCAD drawing screen.";
         btnPick.Click += (s, e) => ExecuteScreenPick();
 
@@ -637,7 +638,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         // txtBearing (Row 1, Col 0)
         txtBearing = UITheme.CreateInputBox(); 
-        txtBearing.Height = 35;
+        txtBearing.Height = 45;
         txtBearing.PreviewKeyDown += Input_PreviewKeyDown;
         Grid.SetRow(txtBearing, 1); Grid.SetColumn(txtBearing, 0);
         gInputMaster.Children.Add(txtBearing);
@@ -647,7 +648,7 @@ public class CadastreWpfWindow : System.Windows.Window
         for (int i = 0; i < 4; i++) gBrgBtns.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(48) });
 
         Button CreateBrgBtn(object content, string tip, double delta) {
-            Button b = new Button() { Content = content, Width = 45, Height = 35, Margin = new Thickness(3, 0, 0, 0), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
+            Button b = new Button() { Content = content, Width = 45, Height = 45, Margin = new Thickness(3, 0, 0, 0), Background = UITheme.ActionBlue, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip };
             b.Click += (s, e) => { ModifyBearing(delta); txtBearing.Focus(); txtBearing.SelectAll(); };
             return b;
         }
@@ -663,7 +664,7 @@ public class CadastreWpfWindow : System.Windows.Window
         gInputMaster.Children.Add(gBrgBtns);
 
         // Bearing Trace (Row 2)
-        lblBearingTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 0, 0, 5) };
+        lblBearingTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, 0, 0, 5) };
         Grid.SetRow(lblBearingTrace, 2); Grid.SetColumnSpan(lblBearingTrace, 2);
         gInputMaster.Children.Add(lblBearingTrace);
 
@@ -674,7 +675,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         // txtDistance (Row 4, Col 0)
         txtDistance = UITheme.CreateInputBox();
-        txtDistance.Height = 35;
+        txtDistance.Height = 45;
         txtDistance.PreviewKeyDown += Input_PreviewKeyDown;
         txtDistance.GotFocus += (s, e) => { txtDistance.BorderBrush = Brushes.WhiteSmoke; txtDistance.BorderThickness = new Thickness(2); };
         txtDistance.LostFocus += (s, e) => { txtDistance.BorderBrush = Brushes.Gray; txtDistance.BorderThickness = new Thickness(1); };
@@ -684,11 +685,11 @@ public class CadastreWpfWindow : System.Windows.Window
         // SIDE SHOT Button (Row 4, Col 1)
         Button bSS = new Button() { 
             Content = UITheme.CreateShortcutContent("PgUp", "\u2699 SIDE SHOT"),
-            Height = 35, 
+            Height = 45, 
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(3, 0, 0, 0), 
-            Background = Brushes.SteelBlue, 
+            Background = UITheme.ActionBlue, 
             Foreground = Brushes.White, 
             FontWeight = FontWeights.Bold, 
             FontSize = 12,
@@ -699,7 +700,7 @@ public class CadastreWpfWindow : System.Windows.Window
         gInputMaster.Children.Add(bSS);
 
         // Distance Trace (Row 5)
-        lblDistanceTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 0, 0, 5) };
+        lblDistanceTrace = new TextBlock() { FontSize = 10, Foreground = Brushes.DarkGray, FontStyle = FontStyles.Italic, Margin = new Thickness(5, 0, 0, 5) };
         Grid.SetRow(lblDistanceTrace, 5); Grid.SetColumnSpan(lblDistanceTrace, 2);
         gInputMaster.Children.Add(lblDistanceTrace);
 
@@ -714,7 +715,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         Button CreateQuickBtn(object content, string tip, Action action)
         {
-            Button b = new Button() { Content = content, Height = 55, Margin = new Thickness(2), Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip, HorizontalAlignment = HorizontalAlignment.Stretch };
+            Button b = new Button() { Content = content, Height = 45, Margin = new Thickness(2), Background = UITheme.ActionBlue, Foreground = Brushes.White, FontWeight = FontWeights.Bold, ToolTip = tip, HorizontalAlignment = HorizontalAlignment.Stretch };
             b.Click += (s, e) => { action(); txtBearing.Focus(); txtBearing.SelectAll(); };
             return b;
         }
@@ -739,12 +740,12 @@ public class CadastreWpfWindow : System.Windows.Window
         g.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
         for (int i = 0; i < 3; i++) g.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
-        btnQ = UITheme.CreateLayerBtn("Q"); btnQ.HorizontalAlignment = HorizontalAlignment.Stretch; btnQ.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.Q].Name, btnQ);
-        btnW = UITheme.CreateLayerBtn("W"); btnW.HorizontalAlignment = HorizontalAlignment.Stretch; btnW.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.W].Name, btnW);
-        btnE = UITheme.CreateLayerBtn("E"); btnE.HorizontalAlignment = HorizontalAlignment.Stretch; btnE.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.E].Name, btnE);
-        btnA = UITheme.CreateLayerBtn("A"); btnA.HorizontalAlignment = HorizontalAlignment.Stretch; btnA.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.A].Name, btnA);
-        btnS = UITheme.CreateLayerBtn("S"); btnS.HorizontalAlignment = HorizontalAlignment.Stretch; btnS.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.S].Name, btnS);
-        btnD = UITheme.CreateLayerBtn("D"); btnD.HorizontalAlignment = HorizontalAlignment.Stretch; btnD.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.D].Name, btnD);
+        btnQ = UITheme.CreateLayerBtn("Q"); btnQ.HorizontalAlignment = HorizontalAlignment.Stretch; btnQ.Height = 55; btnQ.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.Q].Name, btnQ);
+        btnW = UITheme.CreateLayerBtn("W"); btnW.HorizontalAlignment = HorizontalAlignment.Stretch; btnW.Height = 55; btnW.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.W].Name, btnW);
+        btnE = UITheme.CreateLayerBtn("E"); btnE.HorizontalAlignment = HorizontalAlignment.Stretch; btnE.Height = 55; btnE.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.E].Name, btnE);
+        btnA = UITheme.CreateLayerBtn("A"); btnA.HorizontalAlignment = HorizontalAlignment.Stretch; btnA.Height = 55; btnA.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.A].Name, btnA);
+        btnS = UITheme.CreateLayerBtn("S"); btnS.HorizontalAlignment = HorizontalAlignment.Stretch; btnS.Height = 55; btnS.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.S].Name, btnS);
+        btnD = UITheme.CreateLayerBtn("D"); btnD.HorizontalAlignment = HorizontalAlignment.Stretch; btnD.Height = 55; btnD.Click += (s, e) => SetCurrentLayer(LayerConfig[Key.D].Name, btnD);
 
         Grid.SetRow(btnQ, 0); Grid.SetColumn(btnQ, 0); Grid.SetRow(btnW, 0); Grid.SetColumn(btnW, 1); Grid.SetRow(btnE, 0); Grid.SetColumn(btnE, 2);
         Grid.SetRow(btnA, 1); Grid.SetColumn(btnA, 0); Grid.SetRow(btnS, 1); Grid.SetColumn(btnS, 1); Grid.SetRow(btnD, 1); Grid.SetColumn(btnD, 2);
