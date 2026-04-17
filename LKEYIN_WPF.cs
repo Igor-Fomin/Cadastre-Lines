@@ -563,19 +563,19 @@ public class CadastreWpfWindow : System.Windows.Window
 
         Border footer = new Border() { Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)), Padding = new Thickness(5) };
         StackPanel fs = new StackPanel() { HorizontalAlignment = HorizontalAlignment.Center };
-        fs.Children.Add(UITheme.CreateFooterText("PGUP: Coords | PGDN: Side Shot | INS: Comment | DEL: Undo", Brushes.WhiteSmoke));
+        fs.Children.Add(UITheme.CreateFooterText("END: E & N | PGDN: PICK | PGUP: Side Shot | INS: Comment | DEL: Undo", Brushes.WhiteSmoke));
         fs.Children.Add(UITheme.CreateFooterText("ARROWS: \u00B1180\u00B0 / \u00B190\u00B0 | QWE-ASD: Layers (Input Tab Only)", Brushes.LightGray));
         footer.Child = fs;
         Grid.SetRow(footer, 2); mainGrid.Children.Add(footer);
 
         Border st = new Border() { Background = UITheme.AccentColor };
-        lblStatus = new Label() { Content = "USE E & N OR PICK TO START NEW LINE", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
+        lblStatus = new Label() { Content = "USE END OR PGDN TO START NEW LINE", Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center };
         st.Child = lblStatus;
         Grid.SetRow(st, 3); mainGrid.Children.Add(st);
 
         this.Content = mainGrid;
         this.PreviewKeyDown += Window_PreviewKeyDown;
-        UpdateGuideText("USE E & N OR PICK TO START NEW LINE");
+        UpdateGuideText("USE END OR PGDN TO START NEW LINE");
     }
     #endregion
 
@@ -603,13 +603,13 @@ public class CadastreWpfWindow : System.Windows.Window
         gPos.Margin = new Thickness(0, 0, 0, 10);
 
         Button btnEN = UITheme.CreateActionBtn("", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
-        btnEN.Content = UITheme.CreateShortcutContent("PgUp", "\ud83d\udccd E & N");
+        btnEN.Content = UITheme.CreateShortcutContent("End", "\ud83d\udccd E & N");
         btnEN.Height = 40; btnEN.Margin = new Thickness(0, 0, 5, 0);
         btnEN.ToolTip = "Enter starting coordinates manually (Easting/Northing).";
         btnEN.Click += (s, e) => TriggerCoordsWindow();
 
         Button btnPick = UITheme.CreateActionBtn("", new SolidColorBrush(Color.FromRgb(41, 128, 185)));
-        btnPick.Content = UITheme.CreateShortcutContent("PgUp", "\ud83d\uddb1\ufe0f PICK");
+        btnPick.Content = UITheme.CreateShortcutContent("PgDn", "\ud83d\uddb1\ufe0f PICK");
         btnPick.Height = 40; btnPick.Margin = new Thickness(5, 0, 0, 0);
         btnPick.ToolTip = "Select a starting point directly from the AutoCAD drawing screen.";
         btnPick.Click += (s, e) => ExecuteScreenPick();
@@ -683,7 +683,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         // SIDE SHOT Button (Row 4, Col 1)
         Button bSS = new Button() { 
-            Content = UITheme.CreateShortcutContent("PgDn", "\u2699 SIDE SHOT"),
+            Content = UITheme.CreateShortcutContent("PgUp", "\u2699 SIDE SHOT"),
             Height = 35, 
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
@@ -692,7 +692,7 @@ public class CadastreWpfWindow : System.Windows.Window
             Foreground = Brushes.White, 
             FontWeight = FontWeights.Bold, 
             FontSize = 12,
-            ToolTip = "Open Side Shot/Radiation menu (PGDN)" 
+            ToolTip = "Open Side Shot/Radiation menu (PGUP)" 
         };
         bSS.Click += (s, e) => { OpenSideShotForm(); txtBearing.Focus(); txtBearing.SelectAll(); };
         Grid.SetRow(bSS, 4); Grid.SetColumn(bSS, 1);
@@ -964,8 +964,9 @@ public class CadastreWpfWindow : System.Windows.Window
             e.Handled = true;
         }
 
-        if (e.Key == Key.PageUp) { e.Handled = true; TriggerCoordsWindow(); }
-        else if (e.Key == Key.PageDown) { e.Handled = true; OpenSideShotForm(); }
+        if (e.Key == Key.PageUp) { e.Handled = true; OpenSideShotForm(); }
+        else if (e.Key == Key.PageDown) { e.Handled = true; ExecuteScreenPick(); }
+        else if (e.Key == Key.End) { e.Handled = true; TriggerCoordsWindow(); }
         else if (e.Key == Key.Insert) { e.Handled = true; ExecuteUiAction(() => AddTextComment(null)); }
         else if (e.Key == Key.Delete) { e.Handled = true; ExecuteUiAction(() => UndoLastStep()); }
     }
