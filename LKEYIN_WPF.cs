@@ -76,10 +76,10 @@ public class AppSettings
     public string AudioSound { get; set; } = "Asterisk";
     public double SnapTolerance { get; set; } = 0.005;
 
-    public TextSettings TextBrg { get; set; } = new TextSettings();
-    public TextSettings TextDist { get; set; } = new TextSettings();
-    public TextSettings TextPt { get; set; } = new TextSettings();
-    public TextSettings TextComm { get; set; } = new TextSettings();
+    public TextSettings TextBrg { get; set; } = new TextSettings() { ColorIndex = 256 };
+    public TextSettings TextDist { get; set; } = new TextSettings() { ColorIndex = 256 };
+    public TextSettings TextPt { get; set; } = new TextSettings() { ColorIndex = 256 };
+    public TextSettings TextComm { get; set; } = new TextSettings() { ColorIndex = 256 };
 
     public static void Save(AppSettings settings)
     {
@@ -501,12 +501,12 @@ public class CadastreWpfWindow : System.Windows.Window
                 }
 
                 // Automated Layer Setup for Text Layers
-                EnsureLayer(lt, CadConstants.BDY_DISTANCE, 2, tr);
-                EnsureLayer(lt, CadConstants.BDY_BEARING, 2, tr);
-                EnsureLayer(lt, CadConstants.CONNECTION_DIST, 1, tr);
-                EnsureLayer(lt, CadConstants.CONNECTION_BEAR, 1, tr);
-                EnsureLayer(lt, CadConstants.SYMB_TEXT, 1, tr);
-                EnsureLayer(lt, CadConstants.POINT_NUMBER, 3, tr);
+                EnsureLayer(lt, CadConstants.BDY_DISTANCE, 2, tr); // Yellow
+                EnsureLayer(lt, CadConstants.BDY_BEARING, 2, tr);  // Yellow
+                EnsureLayer(lt, CadConstants.CONNECTION_DIST, 1, tr); // Red
+                EnsureLayer(lt, CadConstants.CONNECTION_BEAR, 1, tr); // Red
+                EnsureLayer(lt, CadConstants.SYMB_TEXT, 1, tr);       // Red
+                EnsureLayer(lt, CadConstants.POINT_NUMBER, 3, tr);    // Green
 
                 tr.Commit();
             }
