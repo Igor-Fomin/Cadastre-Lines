@@ -731,7 +731,7 @@ public class CadastreWpfWindow : System.Windows.Window
                         else if (t.Layer == CadConstants.SYMB_TEXT) { baseSize = 2.5; styleName = "ROMANS80"; }
 
                         double finalHeight = GetModelSize(baseSize);
-                        double offsetDist = finalHeight * 1.2;
+                        double offsetDist = GetModelSize(1.5);
 
                         if (t is DBText dbt)
                         {
@@ -1378,8 +1378,7 @@ public class CadastreWpfWindow : System.Windows.Window
             distSettings.Style = "STENDOT80";
         }
 
-        double modelHeight = GetModelSize(brgSettings.Size);
-        double offsetDist = modelHeight * 1.2;
+        double offsetDist = GetModelSize(1.5);
         Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
 
         int d = (int)rawBrg; 
