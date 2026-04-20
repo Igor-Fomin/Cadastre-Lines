@@ -585,10 +585,10 @@ public class CadastreWpfWindow : System.Windows.Window
         spScale.Children.Add(txtScale);
 
         // Visibility Toggles
-        Button btnTglBrg = new Button() { Content = "\u2221", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Yellow, ToolTip = "Toggle Bearing Visibility", Margin = new Thickness(5, 0, 0, 0) };
-        Button btnTglDist = new Button() { Content = "\u2194", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Yellow, ToolTip = "Toggle Distance Visibility", Margin = new Thickness(2, 0, 0, 0) };
-        Button btnTglPt = new Button() { Content = "\u2316", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Lime, ToolTip = "Toggle Point Number Visibility", Margin = new Thickness(2, 0, 0, 0) };
-        Button btnTglComm = new Button() { Content = "\ud83d\udcac", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Red, ToolTip = "Toggle Comment Visibility", Margin = new Thickness(2, 0, 0, 0) };
+        Button btnTglBrg = new Button() { Content = "\u2221", Width = 48, Height = 40, FontSize = 22, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Yellow, ToolTip = "Toggle Bearing Visibility", Margin = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center };
+        Button btnTglDist = new Button() { Content = "\u2194", Width = 48, Height = 40, FontSize = 22, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Yellow, ToolTip = "Toggle Distance Visibility", Margin = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center };
+        Button btnTglPt = new Button() { Content = "\u2316", Width = 48, Height = 40, FontSize = 22, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Lime, ToolTip = "Toggle Point Number Visibility", Margin = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center };
+        Button btnTglComm = new Button() { Content = "\ud83d\udcac", Width = 48, Height = 40, FontSize = 22, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Red, ToolTip = "Toggle Comment Visibility", Margin = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center };
 
         UpdateToggleStyle(btnTglBrg, _config.TextBrg.Visible);
         UpdateToggleStyle(btnTglDist, _config.TextDist.Visible);
@@ -633,7 +633,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         sp.Children.Add(spScale);
 
-        btnSound = new Button() { Content = "\ud83d\udd0a", FontSize = 18, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = "Toggle Audio Feedback" };
+        btnSound = new Button() { Content = "\ud83d\udd0a", Width = 48, Height = 40, FontSize = 22, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = "Toggle Audio Feedback", VerticalAlignment = VerticalAlignment.Center };
         btnSound.Click += (s, e) => { 
             _config.AudioFeedback = !_config.AudioFeedback; 
             AppSettings.Save(_config);
@@ -641,7 +641,7 @@ public class CadastreWpfWindow : System.Windows.Window
             if (_config.AudioFeedback) PlayAudio();
         };
 
-        Button btnAbout = new Button() { Content = "?", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = Brushes.LightGray, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Margin = new Thickness(10, 0, 0, 0), Cursor = Cursors.Hand, ToolTip = "About / Help" };
+        Button btnAbout = new Button() { Content = "?", Width = 48, Height = 40, FontSize = 22, FontWeight = FontWeights.Bold, Foreground = Brushes.LightGray, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = "About / Help", VerticalAlignment = VerticalAlignment.Center };
         btnAbout.Click += (s, e) => ShowAboutPopup();
 
         sp.Children.Add(btnSound);
