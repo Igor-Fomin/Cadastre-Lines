@@ -79,7 +79,7 @@ public class AppSettings
     public TextSettings TextBrg { get; set; } = new TextSettings() { ColorIndex = 256 };
     public TextSettings TextDist { get; set; } = new TextSettings() { ColorIndex = 256 };
     public TextSettings TextPt { get; set; } = new TextSettings() { ColorIndex = 256, Style = "ROMAND140" };
-    public TextSettings TextComm { get; set; } = new TextSettings() { ColorIndex = 256, Style = "ROMANS80" };
+    public TextSettings TextComm { get; set; } = new TextSettings() { ColorIndex = 256, Style = "ROMAND140" };
 
     public static void Save(AppSettings settings)
     {
@@ -114,7 +114,7 @@ public class AppSettings
         TextBrg.Reset(256);
         TextDist.Reset(256);
         TextPt.Reset(256, "ROMAND140");
-        TextComm.Reset(256, "ROMANS80");
+        TextComm.Reset(256, "ROMAND140");
     }
 }
 #endregion
