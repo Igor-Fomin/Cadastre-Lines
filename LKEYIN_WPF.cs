@@ -668,6 +668,9 @@ public class CadastreWpfWindow : System.Windows.Window
                             dbt.Height = finalHeight;
                             dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
                             dbt.ColorIndex = 256; // Forced ByLayer
+                            if (styleName == "STENDOT100S") dbt.Oblique = 23.0 * (Math.PI / 180.0);
+                            else dbt.Oblique = 0.0;
+
                             if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR) dbt.Position = mid + (upVec * offsetDist);
                             else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST) dbt.Position = mid - (upVec * offsetDist);
                         }
@@ -697,7 +700,14 @@ public class CadastreWpfWindow : System.Windows.Window
                     else if (t.Layer == CadConstants.SYMB_TEXT) { baseSize = 2.5; styleName = "ROMANS80"; }
                     
                     double finalHeight = GetModelSize(baseSize);
-                    if (t is DBText dbt) { dbt.Height = finalHeight; dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database); dbt.ColorIndex = 256; }
+                    if (t is DBText dbt) 
+                    { 
+                        dbt.Height = finalHeight; 
+                        dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database); 
+                        dbt.ColorIndex = 256; 
+                        if (styleName == "STENDOT100S") dbt.Oblique = 23.0 * (Math.PI / 180.0);
+                        else dbt.Oblique = 0.0;
+                    }
                     else if (t is MText mt) { mt.TextHeight = finalHeight; mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database); mt.ColorIndex = 256; }
                     count++;
                 }
@@ -1344,6 +1354,7 @@ public class CadastreWpfWindow : System.Windows.Window
             dt.Justify = align;
             dt.AlignmentPoint = pt;
             dt.ColorIndex = 256; // Forced ByLayer
+            if (ts.Style == "STENDOT100S") dt.Oblique = 23.0 * (Math.PI / 180.0);
             return dt;
         }
     }
@@ -1351,37 +1362,36 @@ public class CadastreWpfWindow : System.Windows.Window
     private ObjectId GetTextStyleId(Transaction tr, string styleName, Database db)
     {
         TextStyleTable tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
-        if (tst.Has(styleName)) return tst[styleName];
-
-        // Create missing mandatory styles
-        string fontFile = "romans.shx"; // Default
-        if (styleName.Contains("ROMAND")) fontFile = "romand.shx";
-        else if (styleName.Contains("STENDOT")) fontFile = "simplex.shx";
-
-        try
+        
+        TextStyleTableRecord tstr;
+        if (tst.Has(styleName)) 
+        {
+            tstr = (TextStyleTableRecord)tr.GetObject(tst[styleName], OpenMode.ForWrite);
+        }
+        else
         {
             tst.UpgradeOpen();
-            TextStyleTableRecord tstr = new TextStyleTableRecord();
+            tstr = new TextStyleTableRecord();
             tstr.Name = styleName;
-            tstr.FileName = fontFile;
-            
-            // Specific overrides for known styles
-            if (styleName == "ROMANS80") { tstr.XScale = 0.8; }
-            else if (styleName == "ROMAND140") { tstr.XScale = 1.4; }
-            else if (styleName == "STENDOT100") { tstr.XScale = 1.0; }
-            else if (styleName == "STENDOT100S") { tstr.XScale = 1.0; tstr.ObliquingAngle = 15.0 * (Math.PI / 180.0); }
-            else if (styleName == "STENDOT80") { tstr.XScale = 0.8; }
 
-            ObjectId id = tst.Add(tstr);
+            // Set default font ONLY for new styles
+            string fontFile = "romans.shx"; 
+            if (styleName.Contains("ROMAND")) fontFile = "romand.shx";
+            else if (styleName.Contains("STENDOT")) fontFile = "stendot.shx";
+            tstr.FileName = fontFile;
+
+            tst.Add(tstr);
             tr.AddNewlyCreatedDBObject(tstr, true);
-            _doc.Editor.WriteMessage($"\n[Setup] Created missing style: {styleName} ({fontFile})");
-            return id;
         }
-        catch
-        {
-            _doc.Editor.WriteMessage($"\n[Warning] Style {styleName} not found and could not be created. Using current style.");
-            return db.Textstyle;
-        }
+
+        // Enforce properties (but NOT the font name if it already exists)
+        if (styleName == "ROMANS80") { tstr.XScale = 0.8; }
+        else if (styleName == "ROMAND140") { tstr.XScale = 1.4; }
+        else if (styleName == "STENDOT100") { tstr.XScale = 1.0; }
+        else if (styleName == "STENDOT100S") { tstr.XScale = 1.0; tstr.ObliquingAngle = 23.0 * (Math.PI / 180.0); }
+        else if (styleName == "STENDOT80") { tstr.XScale = 0.8; }
+
+        return tstr.ObjectId;
     }
     #endregion
 
