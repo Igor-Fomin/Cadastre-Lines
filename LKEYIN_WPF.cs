@@ -381,9 +381,11 @@ public class CadastreWpfWindow : System.Windows.Window
     private AppSettings _config;
     private string _currentLayer = "BOUNDARY_SUBJECT";
     private bool _isBusy = false;
+    private double _plotScale = 1000.0;
+    private double GetModelSize(double paperSize) => paperSize * (_plotScale / 1000.0);
 
     // Controls
-    private TextBox txtBearing = null!, txtDistance = null!;
+    private TextBox txtBearing = null!, txtDistance = null!, txtScale = null!;
     private TextBlock lblBearingTrace = null!, lblDistanceTrace = null!;
     private Button btnSound = null!;
 
@@ -556,8 +558,23 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private UIElement BuildHeaderIcons()
     {
-        StackPanel sp = new StackPanel() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 5, 15, 0) };
+        StackPanel sp = new StackPanel() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 5, 15, 0), VerticalAlignment = VerticalAlignment.Center };
         
+        // Plot Scale Input
+        StackPanel spScale = new StackPanel() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 15, 0) };
+        spScale.Children.Add(new TextBlock() { Text = "Scale 1:", Foreground = Brushes.LightGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0), FontSize = 11 });
+        txtScale = new TextBox() { Text = _plotScale.ToString("0"), Width = 50, Height = 25, Background = UITheme.InputBackground, Foreground = Brushes.Cyan, VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center, ToolTip = "Enter target plot scale (e.g., 500 for 1:500). Updates text sizes in model space." };
+        txtScale.TextChanged += (s, e) => { 
+            if (double.TryParse(txtScale.Text, out double val) && val > 0) _plotScale = val; 
+            else if (string.IsNullOrWhiteSpace(txtScale.Text)) _plotScale = 1000.0;
+        };
+        spScale.Children.Add(txtScale);
+
+        Button btnRefresh = new Button() { Content = "\u21bb", FontSize = 18, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.LightGray, Cursor = Cursors.Hand, ToolTip = "Rescale and Re-align existing annotations to current Plot Scale", Margin = new Thickness(5, 0, 0, 0) };
+        btnRefresh.Click += (s, e) => UpdateAllAnnotationScales();
+        spScale.Children.Add(btnRefresh);
+        sp.Children.Add(spScale);
+
         btnSound = new Button() { Content = "\ud83d\udd0a", FontSize = 18, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = "Toggle Audio Feedback" };
         btnSound.Click += (s, e) => { 
             _config.AudioFeedback = !_config.AudioFeedback; 
@@ -572,6 +589,74 @@ public class CadastreWpfWindow : System.Windows.Window
         sp.Children.Add(btnSound);
         sp.Children.Add(btnAbout);
         return sp;
+    }
+
+    private void UpdateAllAnnotationScales()
+    {
+        if (!ValidateDocument()) return;
+        
+        ExecuteUiAction(() => {
+            using (DocumentLock loc = _doc.LockDocument())
+            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            {
+                BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+                BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+                
+                string[] lineLayers = { "BOUNDARY_SUBJECT", "BOUNDARY_ADJOINING", "CONNECTIONS", "BDY_EASEMENT", "ADDITIONAL_1", "ADDITIONAL_2" };
+                string[] textLayers = { CadConstants.BDY_BEARING, CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_BEAR, CadConstants.CONNECTION_DIST, CadConstants.POINT_NUMBER, CadConstants.SYMB_TEXT };
+
+                List<Autodesk.AutoCAD.DatabaseServices.Line> lines = new List<Autodesk.AutoCAD.DatabaseServices.Line>();
+                List<Entity> texts = new List<Entity>();
+
+                foreach (ObjectId id in btr)
+                {
+                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
+                    if (lineLayers.Contains(ent.Layer) && ent is Autodesk.AutoCAD.DatabaseServices.Line ln) lines.Add(ln);
+                    else if (textLayers.Contains(ent.Layer) && (ent is DBText || ent is MText)) texts.Add(ent);
+                }
+
+                int count = 0;
+                foreach (var ln in lines)
+                {
+                    Point3d mid = ln.StartPoint + (ln.EndPoint - ln.StartPoint) / 2.0;
+                    double angle = (ln.EndPoint - ln.StartPoint).AngleOnPlane(new Plane(Point3d.Origin, Vector3d.ZAxis));
+                    double dx = Math.Cos(angle); double dy = Math.Sin(angle);
+                    
+                    double normAng = angle % (Math.PI * 2); if (normAng < 0) normAng += (Math.PI * 2);
+                    bool isFlipped = (normAng > (Math.PI / 2) && normAng <= (3 * Math.PI / 2));
+                    Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
+
+                    var nearTexts = texts.Where(t => {
+                        Point3d tPos = (t is DBText dbt) ? dbt.Position : ((MText)t).Location;
+                        return tPos.DistanceTo(mid) < 10.0;
+                    }).ToList();
+
+                    foreach (var t in nearTexts)
+                    {
+                        t.UpgradeOpen();
+                        double baseSize = (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.BDY_DISTANCE) ? 3.0 : 2.5;
+                        double finalHeight = GetModelSize(baseSize);
+                        double offsetDist = finalHeight * 1.2;
+
+                        if (t is DBText dbt)
+                        {
+                            dbt.Height = finalHeight;
+                            if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR) dbt.Position = mid + (upVec * offsetDist);
+                            else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST) dbt.Position = mid - (upVec * offsetDist);
+                        }
+                        else if (t is MText mt)
+                        {
+                            mt.TextHeight = finalHeight;
+                            if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR) mt.Location = mid + (upVec * offsetDist);
+                            else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST) mt.Location = mid - (upVec * offsetDist);
+                        }
+                        count++;
+                    }
+                }
+                tr.Commit();
+                _doc.Editor.WriteMessage($"\n[Refresh] Re-aligned and rescaled {count} annotations.");
+            }
+        });
     }
 
     private void UpdateSoundIcon()
@@ -871,7 +956,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
     }
 
-    private string EvaluateInlineExpression(string input, bool isDms)
+    private string? EvaluateInlineExpression(string input, bool isDms)
     {
         try
         {
@@ -1190,19 +1275,20 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         EnsureLayerExistsInternal(layer, null, tr, db);
         ObjectId styleId = GetTextStyleId(tr, ts.Style, db);
+        double modelHeight = ts.Size * (_plotScale / 1000.0);
+
         if (ts.IsMText)
         {
             MText mt = new MText(); 
             mt.Contents = content; 
             mt.Layer = layer; 
-            mt.TextHeight = ts.Size; 
+            mt.TextHeight = modelHeight; 
             mt.TextStyleId = styleId;
             mt.Rotation = rotation; 
             mt.Location = pt; 
             mt.Attachment = align;
             mt.Color = AcColor.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci, 256); // Force ByLayer
             if (ts.Masking) { mt.BackgroundFill = true; mt.UseBackgroundColor = true; mt.BackgroundScaleFactor = 1.1; }
-            mt.Annotative = AnnotativeStates.True;
             return mt;
         }
         else
@@ -1210,14 +1296,13 @@ public class CadastreWpfWindow : System.Windows.Window
             DBText dt = new DBText(); 
             dt.TextString = content; 
             dt.Layer = layer; 
-            dt.Height = ts.Size; 
+            dt.Height = modelHeight; 
             dt.TextStyleId = styleId;
             dt.Rotation = rotation; 
             dt.Position = pt; 
             dt.Justify = align;
             dt.AlignmentPoint = pt;
             dt.Color = AcColor.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci, 256); // Force ByLayer
-            dt.Annotative = AnnotativeStates.True;
             return dt;
         }
     }
