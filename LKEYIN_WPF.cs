@@ -144,11 +144,25 @@ public static class UITheme
 
     public static UIElement CreateShortcutContent(string key, string description)
     {
-        TextBlock tb = new TextBlock() { TextAlignment = System.Windows.TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center, LineHeight = 12, LineStackingStrategy = LineStackingStrategy.BlockLineHeight };
-        tb.Inlines.Add(new Run(key) { FontSize = 10, FontWeight = FontWeights.Bold });
-        tb.Inlines.Add(new LineBreak());
-        tb.Inlines.Add(new Run(description) { FontSize = 13 });
-        return tb;
+        StackPanel sp = new StackPanel() { VerticalAlignment = VerticalAlignment.Center };
+        
+        TextBlock tbKey = new TextBlock() { 
+            Text = key, 
+            FontSize = 10, 
+            FontWeight = FontWeights.Bold, 
+            HorizontalAlignment = HorizontalAlignment.Center 
+        };
+        
+        TextBlock tbDesc = new TextBlock() { 
+            Text = description, 
+            FontSize = 13, 
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, -3, 0, 0) 
+        };
+        
+        sp.Children.Add(tbKey);
+        sp.Children.Add(tbDesc);
+        return sp;
     }
 
     public static Button CreateColorBtn(short colorIndex)
@@ -566,7 +580,10 @@ public class CadastreWpfWindow : System.Windows.Window
         
         // Plot Scale Input
         StackPanel spScale = new StackPanel() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 15, 0) };
-        spScale.Children.Add(new TextBlock() { Text = "Scale 1:", Foreground = Brushes.LightGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0), FontSize = 11 });
+        Label lblScale = UITheme.CreateLabel("SCALE 1:");
+        lblScale.VerticalAlignment = VerticalAlignment.Center;
+        lblScale.Margin = new Thickness(0, 0, 5, 0);
+        spScale.Children.Add(lblScale);
         txtScale = new TextBox() { Text = _plotScale.ToString("0"), Width = 50, Height = 25, Background = UITheme.InputBackground, Foreground = Brushes.Cyan, VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center, ToolTip = "Enter target plot scale (e.g., 500 for 1:500) and press ENTER to update drawing." };
         txtScale.TextChanged += (s, e) => { 
             if (double.TryParse(txtScale.Text, out double val) && val > 0) _plotScale = val; 
@@ -932,8 +949,8 @@ public class CadastreWpfWindow : System.Windows.Window
             return b;
         }
 
-        Button bUndo = CreateQuickBtn(UITheme.CreateShortcutContent("Del", "\u21B2 Undo"), "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
-        Button bComm = CreateQuickBtn(UITheme.CreateShortcutContent("Ins", "\ud83d\udcac Comment"), "Add Text Comment/Symbol (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
+        Button bUndo = CreateQuickBtn(UITheme.CreateShortcutContent("Del", "\u21B2 UNDO"), "Delete last line/text (DEL)", () => ExecuteUiAction(() => UndoLastStep()));
+        Button bComm = CreateQuickBtn(UITheme.CreateShortcutContent("Ins", "\ud83d\udcac COMMENT"), "Add Text Comment/Symbol (INS)", () => ExecuteUiAction(() => AddTextComment(null)));
 
         Grid.SetColumn(bUndo, 0); Grid.SetColumn(bComm, 1);
         gActions.Children.Add(bUndo); gActions.Children.Add(bComm);
