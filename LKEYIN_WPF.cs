@@ -615,8 +615,10 @@ public class CadastreWpfWindow : System.Windows.Window
                     else if (textLayers.Contains(ent.Layer) && (ent is DBText || ent is MText)) texts.Add(ent);
                 }
 
-                double searchRadius = GetModelSize(15.0);
+                HashSet<ObjectId> processedIds = new HashSet<ObjectId>();
+                double searchRadius = 15.0; // Fixed model-space search radius
                 int count = 0;
+
                 foreach (var ln in lines)
                 {
                     Point3d mid = ln.StartPoint + (ln.EndPoint - ln.StartPoint) / 2.0;
@@ -627,27 +629,43 @@ public class CadastreWpfWindow : System.Windows.Window
                     bool isFlipped = (normAng > (Math.PI / 2) && normAng <= (3 * Math.PI / 2));
                     Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
 
+                    // Find associated texts near midpoint or endpoints (for point numbers)
                     var nearTexts = texts.Where(t => {
+                        if (processedIds.Contains(t.ObjectId)) return false;
                         Point3d tPos = (t is DBText dbt) ? dbt.Position : ((MText)t).Location;
-                        return tPos.DistanceTo(mid) < searchRadius;
+                        return tPos.DistanceTo(mid) < searchRadius || tPos.DistanceTo(ln.StartPoint) < searchRadius || tPos.DistanceTo(ln.EndPoint) < searchRadius;
                     }).ToList();
 
                     foreach (var t in nearTexts)
                     {
+                        processedIds.Add(t.ObjectId);
                         t.UpgradeOpen();
-                        double baseSize = (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.BDY_DISTANCE) ? 3.0 : 2.5;
+                        
+                        double baseSize = 2.5;
+                        string styleName = "Standard";
+
+                        if (t.Layer == CadConstants.BDY_BEARING) { baseSize = 3.0; styleName = "STENDOT100"; }
+                        else if (t.Layer == CadConstants.BDY_DISTANCE) { baseSize = 3.0; styleName = "STENDOT100S"; }
+                        else if (t.Layer == CadConstants.CONNECTION_BEAR || t.Layer == CadConstants.CONNECTION_DIST) { baseSize = 2.5; styleName = "STENDOT80"; }
+                        else if (t.Layer == CadConstants.POINT_NUMBER) { baseSize = 2.5; styleName = "ROMAND140"; }
+                        else if (t.Layer == CadConstants.SYMB_TEXT) { baseSize = 2.5; styleName = "ROMANS80"; }
+
                         double finalHeight = GetModelSize(baseSize);
                         double offsetDist = finalHeight * 1.2;
 
                         if (t is DBText dbt)
                         {
                             dbt.Height = finalHeight;
+                            dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
+                            dbt.ColorIndex = 256; // Forced ByLayer
                             if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR) dbt.Position = mid + (upVec * offsetDist);
                             else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST) dbt.Position = mid - (upVec * offsetDist);
                         }
                         else if (t is MText mt)
                         {
                             mt.TextHeight = finalHeight;
+                            mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
+                            mt.ColorIndex = 256; // Forced ByLayer
                             if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR) mt.Location = mid + (upVec * offsetDist);
                             else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST) mt.Location = mid - (upVec * offsetDist);
                         }
@@ -655,7 +673,7 @@ public class CadastreWpfWindow : System.Windows.Window
                     }
                 }
                 tr.Commit();
-                _doc.Editor.WriteMessage($"\n[Refresh] Re-aligned and rescaled {count} annotations.");
+                _doc.Editor.WriteMessage($"\n[Refresh] Updated {count} entities to 1:{_plotScale}.");
             }
         });
     }
@@ -1037,7 +1055,8 @@ public class CadastreWpfWindow : System.Windows.Window
                     int nextNum = DwgDataManager.GetNextPointNumber(tr, _doc.Database);
                     BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                     BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    Entity ptTxt = CreateText(nextNum.ToString(), CadConstants.POINT_NUMBER, pt, AttachmentPoint.BottomLeft, tr, _doc.Database, _config.TextPt);
+                    TextSettings ptSettings = new TextSettings { Size = 2.5, Style = "ROMAND140" };
+                    Entity ptTxt = CreateText(nextNum.ToString(), CadConstants.POINT_NUMBER, pt, AttachmentPoint.BottomLeft, tr, _doc.Database, ptSettings);
                     AddToDb(ptTxt, btr, tr);
                     DwgDataManager.SetNextPointNumber(nextNum + 1, tr, _doc.Database);
                 }
@@ -1094,7 +1113,8 @@ public class CadastreWpfWindow : System.Windows.Window
         if (!exists)
         {
             int nextNum = DwgDataManager.GetNextPointNumber(tr, btr.Database);
-            createdEntities.Add(AddToDb(CreateText(nextNum.ToString(), CadConstants.POINT_NUMBER, endPoint, AttachmentPoint.BottomLeft, tr, btr.Database, _config.TextPt), btr, tr));
+            TextSettings ptSettings = new TextSettings { Size = 2.5, Style = "ROMAND140" };
+            createdEntities.Add(AddToDb(CreateText(nextNum.ToString(), CadConstants.POINT_NUMBER, endPoint, AttachmentPoint.BottomLeft, tr, btr.Database, ptSettings), btr, tr));
             DwgDataManager.SetNextPointNumber(nextNum + 1, tr, btr.Database);
         }
 
