@@ -1011,6 +1011,12 @@ public class CadastreWpfWindow : System.Windows.Window
     #endregion
 
     #region UI & Input Handlers
+    private void ReturnToBearing()
+    {
+        txtBearing.Focus();
+        txtBearing.SelectAll();
+    }
+
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (LayerConfig.ContainsKey(e.Key))
@@ -1021,11 +1027,11 @@ public class CadastreWpfWindow : System.Windows.Window
             e.Handled = true;
         }
 
-        if (e.Key == Key.PageUp) { e.Handled = true; OpenSideShotForm(); }
-        else if (e.Key == Key.PageDown) { e.Handled = true; ExecuteScreenPick(); }
-        else if (e.Key == Key.End) { e.Handled = true; TriggerCoordsWindow(); }
-        else if (e.Key == Key.Insert) { e.Handled = true; ExecuteUiAction(() => AddTextComment(null)); }
-        else if (e.Key == Key.Delete) { e.Handled = true; ExecuteUiAction(() => UndoLastStep()); }
+        if (e.Key == Key.PageUp) { e.Handled = true; OpenSideShotForm(); ReturnToBearing(); }
+        else if (e.Key == Key.PageDown) { e.Handled = true; ExecuteScreenPick(); ReturnToBearing(); }
+        else if (e.Key == Key.End) { e.Handled = true; TriggerCoordsWindow(); ReturnToBearing(); }
+        else if (e.Key == Key.Insert) { e.Handled = true; ExecuteUiAction(() => AddTextComment(null)); ReturnToBearing(); }
+        else if (e.Key == Key.Delete) { e.Handled = true; ExecuteUiAction(() => UndoLastStep()); ReturnToBearing(); }
     }
 
     private void Input_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1637,6 +1643,9 @@ public class CadastreWpfWindow : System.Windows.Window
                 tr.Commit(); _doc.Editor.UpdateScreen();
             }
         }
+        
+        this.Activate();
+        ReturnToBearing();
     }
 
     private void OpenSideShotForm()
@@ -1669,8 +1678,8 @@ public class CadastreWpfWindow : System.Windows.Window
                     tr.Commit(); _doc.Editor.UpdateScreen();
                 }
             });
-            txtBearing.Focus(); txtBearing.SelectAll();
         }
+        ReturnToBearing();
     }
 
     private void OpenCalculator(TextBox txt, bool isDms)
@@ -1697,9 +1706,9 @@ public class CadastreWpfWindow : System.Windows.Window
         if (ppr.Status == PromptStatus.OK)
         {
             SetStartPoint(ppr.Value);
-            txtBearing.Focus();
-            txtBearing.SelectAll();
         }
+        
+        ReturnToBearing();
     }
 
     private void TriggerCoordsWindow()
