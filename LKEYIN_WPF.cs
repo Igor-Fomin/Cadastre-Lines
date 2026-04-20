@@ -59,9 +59,9 @@ public class TextSettings
     public short ColorIndex { get; set; } = 256; // Forced ByLayer
     public bool Visible { get; set; } = true;
 
-    public void Reset(short unused)
+    public void Reset(short unused, string defaultStyle = "Standard")
     {
-        Style = "Standard";
+        Style = defaultStyle;
         Size = 1.0;
         IsMText = false;
         Masking = false;
@@ -78,8 +78,8 @@ public class AppSettings
 
     public TextSettings TextBrg { get; set; } = new TextSettings() { ColorIndex = 256 };
     public TextSettings TextDist { get; set; } = new TextSettings() { ColorIndex = 256 };
-    public TextSettings TextPt { get; set; } = new TextSettings() { ColorIndex = 256 };
-    public TextSettings TextComm { get; set; } = new TextSettings() { ColorIndex = 256 };
+    public TextSettings TextPt { get; set; } = new TextSettings() { ColorIndex = 256, Style = "ROMAND140" };
+    public TextSettings TextComm { get; set; } = new TextSettings() { ColorIndex = 256, Style = "ROMANS80" };
 
     public static void Save(AppSettings settings)
     {
@@ -113,8 +113,8 @@ public class AppSettings
     {
         TextBrg.Reset(256);
         TextDist.Reset(256);
-        TextPt.Reset(256);
-        TextComm.Reset(256);
+        TextPt.Reset(256, "ROMAND140");
+        TextComm.Reset(256, "ROMANS80");
     }
 }
 #endregion
