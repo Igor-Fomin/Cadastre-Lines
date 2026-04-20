@@ -1345,9 +1345,36 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         TextStyleTable tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
         if (tst.Has(styleName)) return tst[styleName];
-        
-        _doc.Editor.WriteMessage($"\n[Warning] Style {styleName} not found. Using current style instead.");
-        return db.Textstyle;
+
+        // Create missing mandatory styles
+        string fontFile = "romans.shx"; // Default
+        if (styleName.Contains("ROMAND")) fontFile = "romand.shx";
+        else if (styleName.Contains("STENDOT")) fontFile = "simplex.shx";
+
+        try
+        {
+            tst.UpgradeOpen();
+            TextStyleTableRecord tstr = new TextStyleTableRecord();
+            tstr.Name = styleName;
+            tstr.FileName = fontFile;
+            
+            // Specific overrides for known styles
+            if (styleName == "ROMANS80") { tstr.XScale = 0.8; }
+            else if (styleName == "ROMAND140") { tstr.XScale = 1.4; }
+            else if (styleName == "STENDOT100") { tstr.XScale = 1.0; }
+            else if (styleName == "STENDOT100S") { tstr.XScale = 1.0; tstr.ObliquingAngle = 15.0 * (Math.PI / 180.0); }
+            else if (styleName == "STENDOT80") { tstr.XScale = 0.8; }
+
+            ObjectId id = tst.Add(tstr);
+            tr.AddNewlyCreatedDBObject(tstr, true);
+            _doc.Editor.WriteMessage($"\n[Setup] Created missing style: {styleName} ({fontFile})");
+            return id;
+        }
+        catch
+        {
+            _doc.Editor.WriteMessage($"\n[Warning] Style {styleName} not found and could not be created. Using current style.");
+            return db.Textstyle;
+        }
     }
     #endregion
 
