@@ -695,127 +695,102 @@ public class CadastreWpfWindow : System.Windows.Window
                     else if (textLayers.Contains(ent.Layer) && (ent is DBText || ent is MText)) texts.Add(ent);
                 }
 
-                HashSet<ObjectId> processedIds = new HashSet<ObjectId>();
-                double searchRadius = 150.0; // Fixed large model-space search radius
                 int count = 0;
 
-                foreach (var ln in lines)
-                {
-                    Point3d mid = ln.StartPoint + (ln.EndPoint - ln.StartPoint) / 2.0;
-                    double angle = (ln.EndPoint - ln.StartPoint).AngleOnPlane(new Plane(Point3d.Origin, Vector3d.ZAxis));
-                    double dx = Math.Cos(angle); double dy = Math.Sin(angle);
-                    
-                    double normAng = angle % (Math.PI * 2); if (normAng < 0) normAng += (Math.PI * 2);
-                    bool isFlipped = (normAng > (Math.PI / 2) && normAng <= (3 * Math.PI / 2));
-                    Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
-
-                    // Find associated texts near midpoint or endpoints
-                    var nearTexts = texts.Where(t => {
-                        if (processedIds.Contains(t.ObjectId)) return false;
-                        Point3d tPos = (t is DBText dbt) ? dbt.Position : ((MText)t).Location;
-                        return tPos.DistanceTo(mid) < searchRadius || tPos.DistanceTo(ln.StartPoint) < searchRadius || tPos.DistanceTo(ln.EndPoint) < searchRadius;
-                    }).ToList();
-
-                    foreach (var t in nearTexts)
-                    {
-                        processedIds.Add(t.ObjectId);
-                        t.UpgradeOpen();
-                        
-                        double baseSize = 2.5;
-                        string styleName = "Standard";
-
-                        if (t.Layer == CadConstants.BDY_BEARING) { baseSize = 3.0; styleName = "STENDOT100"; }
-                        else if (t.Layer == CadConstants.BDY_DISTANCE) { baseSize = 3.0; styleName = "STENDOT100S"; }
-                        else if (t.Layer == CadConstants.CONNECTION_BEAR || t.Layer == CadConstants.CONNECTION_DIST) { baseSize = 2.5; styleName = "STENDOT80"; }
-                        else if (t.Layer == CadConstants.POINT_NUMBER) { baseSize = 2.5; styleName = "ROMAND140"; }
-                        else if (t.Layer == CadConstants.SYMB_TEXT) { baseSize = 2.5; styleName = "ROMANS80"; }
-
-                        double finalHeight = GetModelSize(baseSize);
-                        double offsetDist = GetModelSize(1.5);
-
-                        bool isMovable = (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR || 
-                                          t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST);
-
-                        if (t is DBText dbt)
-                        {
-                            dbt.Height = finalHeight;
-                            dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
-                            dbt.ColorIndex = 256; 
-                            if (styleName == "STENDOT100S") dbt.Oblique = 23.0 * (Math.PI / 180.0);
-                            else dbt.Oblique = 0.0;
-
-                            if (isMovable)
-                            {
-                                // 1. Identify current anchor point
-                                Point3d currentPos = (dbt.Justify == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
-                                
-                                // 2. Project onto line to preserve longitudinal position
-                                Vector3d lineDir = (ln.EndPoint - ln.StartPoint).GetNormal();
-                                double distAlong = (currentPos - ln.StartPoint).DotProduct(lineDir);
-                                Point3d projOnLine = ln.StartPoint + (lineDir * distAlong);
-
-                                // 3. Determine movement direction (90 degrees from text rotation)
-                                double moveAng = dbt.Rotation + (Math.PI / 2.0);
-                                Vector3d perpVec = new Vector3d(Math.Cos(moveAng), Math.Sin(moveAng), 0);
-
-                                // 4. Determine which side to move towards
-                                Vector3d curOffsetVec = currentPos - projOnLine;
-                                if (curOffsetVec.DotProduct(perpVec) < 0) perpVec = -perpVec;
-
-                                Point3d newPos = projOnLine + (perpVec * offsetDist);
-                                dbt.Position = newPos;
-                                dbt.AlignmentPoint = newPos;
-                            }
-                        }
-                        else if (t is MText mt)
-                        {
-                            mt.TextHeight = finalHeight;
-                            mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
-                            mt.ColorIndex = 256; 
-
-                            if (isMovable)
-                            {
-                                Point3d currentPos = mt.Location;
-                                Vector3d lineDir = (ln.EndPoint - ln.StartPoint).GetNormal();
-                                double distAlong = (currentPos - ln.StartPoint).DotProduct(lineDir);
-                                Point3d projOnLine = ln.StartPoint + (lineDir * distAlong);
-
-                                double moveAng = mt.Rotation + (Math.PI / 2.0);
-                                Vector3d perpVec = new Vector3d(Math.Cos(moveAng), Math.Sin(moveAng), 0);
-
-                                Vector3d curOffsetVec = currentPos - projOnLine;
-                                if (curOffsetVec.DotProduct(perpVec) < 0) perpVec = -perpVec;
-
-                                mt.Location = projOnLine + (perpVec * offsetDist);
-                            }
-                        }
-                        count++;
-                    }
-                }
-
-                // Final pass for any remaining unprocessed text objects on specified layers
                 foreach (var t in texts)
                 {
-                    if (processedIds.Contains(t.ObjectId)) continue;
                     t.UpgradeOpen();
+                    
                     double baseSize = 2.5;
                     string styleName = "Standard";
+
                     if (t.Layer == CadConstants.BDY_BEARING) { baseSize = 3.0; styleName = "STENDOT100"; }
                     else if (t.Layer == CadConstants.BDY_DISTANCE) { baseSize = 3.0; styleName = "STENDOT100S"; }
                     else if (t.Layer == CadConstants.CONNECTION_BEAR || t.Layer == CadConstants.CONNECTION_DIST) { baseSize = 2.5; styleName = "STENDOT80"; }
-                    else if (t.Layer == CadConstants.POINT_NUMBER) { baseSize = 2.5; styleName = "ROMAND140"; }
+                    else if (t.Layer == CadConstants.POINT_NUMBER) { baseSize = 2.5; styleName = "ROMANS80"; }
                     else if (t.Layer == CadConstants.SYMB_TEXT) { baseSize = 2.5; styleName = "ROMANS80"; }
-                    
+
                     double finalHeight = GetModelSize(baseSize);
-                    if (t is DBText dbt) 
-                    { 
-                        dbt.Height = finalHeight; 
-                        dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database); 
+
+                    bool isMovable = (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR || 
+                                      t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST);
+
+                    double textRot = 0.0;
+                    Point3d tPos = Point3d.Origin;
+
+                    if (t is DBText dbt)
+                    {
+                        dbt.Height = finalHeight;
+                        dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
                         dbt.ColorIndex = 256; 
                         if (styleName == "STENDOT100S") dbt.Oblique = 23.0 * (Math.PI / 180.0);
                         else dbt.Oblique = 0.0;
+                        textRot = dbt.Rotation;
+                        tPos = (dbt.Justify == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
                     }
-                    else if (t is MText mt) { mt.TextHeight = finalHeight; mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database); mt.ColorIndex = 256; }
+                    else if (t is MText mt)
+                    {
+                        mt.TextHeight = finalHeight;
+                        mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
+                        mt.ColorIndex = 256; 
+                        textRot = mt.Rotation;
+                        tPos = mt.Location;
+                    }
+
+                    if (isMovable)
+                    {
+                        Autodesk.AutoCAD.DatabaseServices.Line closestLine = null;
+                        double minDistance = double.MaxValue;
+                        double tolerance = 0.02;
+
+                        foreach (var ln in lines)
+                        {
+                            double angle = ln.Angle;
+                            
+                            double diff1 = Math.Abs(angle - textRot) % (Math.PI * 2);
+                            double diff2 = Math.Abs(angle + Math.PI - textRot) % (Math.PI * 2);
+                            diff1 = Math.Min(diff1, Math.PI * 2 - diff1);
+                            diff2 = Math.Min(diff2, Math.PI * 2 - diff2);
+
+                            if (diff1 <= tolerance || diff2 <= tolerance)
+                            {
+                                Point3d midLn = ln.StartPoint + (ln.EndPoint - ln.StartPoint) / 2.0;
+                                double dist = tPos.DistanceTo(midLn);
+                                if (dist < minDistance)
+                                {
+                                    minDistance = dist;
+                                    closestLine = ln;
+                                }
+                            }
+                        }
+
+                        if (closestLine != null)
+                        {
+                            Point3d mid = closestLine.StartPoint + (closestLine.EndPoint - closestLine.StartPoint) / 2.0;
+                            Vector3d lineDir = (closestLine.EndPoint - closestLine.StartPoint).GetNormal();
+                            Vector3d perpVec = new Vector3d(-lineDir.Y, lineDir.X, 0);
+
+                            if ((tPos - mid).DotProduct(perpVec) < 0) perpVec = -perpVec;
+
+                            Point3d newPos = mid + (perpVec * GetModelSize(1.5));
+
+                            if (t is DBText dbtMove)
+                            {
+                                if (dbtMove.Justify == AttachmentPoint.BaseLeft)
+                                {
+                                    dbtMove.Position = newPos;
+                                }
+                                else
+                                {
+                                    dbtMove.AlignmentPoint = newPos;
+                                }
+                            }
+                            else if (t is MText mtMove)
+                            {
+                                mtMove.Location = newPos;
+                            }
+                        }
+                    }
                     count++;
                 }
 
