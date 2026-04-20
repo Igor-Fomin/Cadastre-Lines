@@ -733,24 +733,61 @@ public class CadastreWpfWindow : System.Windows.Window
                         double finalHeight = GetModelSize(baseSize);
                         double offsetDist = GetModelSize(1.5);
 
+                        bool isMovable = (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR || 
+                                          t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST);
+
                         if (t is DBText dbt)
                         {
                             dbt.Height = finalHeight;
                             dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
-                            dbt.ColorIndex = 256; // Forced ByLayer
+                            dbt.ColorIndex = 256; 
                             if (styleName == "STENDOT100S") dbt.Oblique = 23.0 * (Math.PI / 180.0);
                             else dbt.Oblique = 0.0;
 
-                            if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR) dbt.Position = mid + (upVec * offsetDist);
-                            else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST) dbt.Position = mid - (upVec * offsetDist);
+                            if (isMovable)
+                            {
+                                // 1. Identify current anchor point
+                                Point3d currentPos = (dbt.Justify == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
+                                
+                                // 2. Project onto line to preserve longitudinal position
+                                Vector3d lineDir = (ln.EndPoint - ln.StartPoint).GetNormal();
+                                double distAlong = (currentPos - ln.StartPoint).DotProduct(lineDir);
+                                Point3d projOnLine = ln.StartPoint + (lineDir * distAlong);
+
+                                // 3. Determine movement direction (90 degrees from text rotation)
+                                double moveAng = dbt.Rotation + (Math.PI / 2.0);
+                                Vector3d perpVec = new Vector3d(Math.Cos(moveAng), Math.Sin(moveAng), 0);
+
+                                // 4. Determine which side to move towards
+                                Vector3d curOffsetVec = currentPos - projOnLine;
+                                if (curOffsetVec.DotProduct(perpVec) < 0) perpVec = -perpVec;
+
+                                Point3d newPos = projOnLine + (perpVec * offsetDist);
+                                dbt.Position = newPos;
+                                dbt.AlignmentPoint = newPos;
+                            }
                         }
                         else if (t is MText mt)
                         {
                             mt.TextHeight = finalHeight;
                             mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
-                            mt.ColorIndex = 256; // Forced ByLayer
-                            if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR) mt.Location = mid + (upVec * offsetDist);
-                            else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST) mt.Location = mid - (upVec * offsetDist);
+                            mt.ColorIndex = 256; 
+
+                            if (isMovable)
+                            {
+                                Point3d currentPos = mt.Location;
+                                Vector3d lineDir = (ln.EndPoint - ln.StartPoint).GetNormal();
+                                double distAlong = (currentPos - ln.StartPoint).DotProduct(lineDir);
+                                Point3d projOnLine = ln.StartPoint + (lineDir * distAlong);
+
+                                double moveAng = mt.Rotation + (Math.PI / 2.0);
+                                Vector3d perpVec = new Vector3d(Math.Cos(moveAng), Math.Sin(moveAng), 0);
+
+                                Vector3d curOffsetVec = currentPos - projOnLine;
+                                if (curOffsetVec.DotProduct(perpVec) < 0) perpVec = -perpVec;
+
+                                mt.Location = projOnLine + (perpVec * offsetDist);
+                            }
                         }
                         count++;
                     }
