@@ -1104,7 +1104,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
     }
 
-    private string? EvaluateInlineExpression(string input, bool isDms)
+    internal string? EvaluateInlineExpression(string input, bool isDms)
     {
         try
         {
@@ -1650,9 +1650,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void OpenSideShotForm()
     {
-        SideShotWpfWindow ssWin = new SideShotWpfWindow();
-        ssWin.Owner = this;
-        if (ssWin.ShowDialog() == true)
+        SideShotWpfWindow ssWin = new SideShotWpfWindow(txtBearing.Text, (brg, dist, comm) => 
         {
             if (!ValidateDocument()) return;
             ExecuteUiAction(() => {
@@ -1661,24 +1659,26 @@ public class CadastreWpfWindow : System.Windows.Window
                 {
                     BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                     BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                    DrawGeometryToDatabase(tr, btr, ssWin.Bearing, ssWin.Distance, _currentPoint, _currentLayer);
-                    if (!string.IsNullOrEmpty(ssWin.Comment))
+                    DrawGeometryToDatabase(tr, btr, brg, dist, _currentPoint, _currentLayer);
+                    if (!string.IsNullOrEmpty(comm))
                     {
                         double rawBrg; 
-                        CadMath.TryParseBearing(ssWin.Bearing, out rawBrg);
-                        double dist = double.Parse(ssWin.Distance);
+                        CadMath.TryParseBearing(brg, out rawBrg);
+                        double distVal = double.Parse(dist);
                         double angleDeg = CadMath.ParseDmsToDegrees(rawBrg);
                         double rad = (90.0 - angleDeg) * (Math.PI / 180.0);
-                        Point3d endPt = new Point3d(_currentPoint.X + (dist * Math.Cos(rad)), _currentPoint.Y + (dist * Math.Sin(rad)), _currentPoint.Z);
+                        Point3d endPt = new Point3d(_currentPoint.X + (distVal * Math.Cos(rad)), _currentPoint.Y + (distVal * Math.Sin(rad)), _currentPoint.Z);
                         TextSettings commSettings = new TextSettings { Style = "ROMANS80", Size = 2.5 };
-                        Entity txt = CreateText(ssWin.Comment, CadConstants.SYMB_TEXT, endPt, AttachmentPoint.MiddleLeft, tr, _doc.Database, commSettings);
+                        Entity txt = CreateText(comm, CadConstants.SYMB_TEXT, endPt, AttachmentPoint.MiddleLeft, tr, _doc.Database, commSettings);
                         ObjectId txtId = AddToDb(txt, btr, tr);
                         if (_undoStack.Count > 0) _undoStack.Peek().Add(txtId);
                     }
                     tr.Commit(); _doc.Editor.UpdateScreen();
                 }
             });
-        }
+        });
+        ssWin.Owner = this;
+        ssWin.ShowDialog();
         ReturnToBearing();
     }
 
@@ -1845,13 +1845,21 @@ public class CoordsInputWindow : System.Windows.Window
 
 public class SideShotWpfWindow : System.Windows.Window
 {
-    public string Bearing => txtBrg.Text; public string Distance => txtDist.Text; public string Comment => txtComm.Text;
     private TextBox txtBrg = null!, txtDist = null!, txtComm = null!;
-    public SideShotWpfWindow()
+    private TextBlock lblBrgTrace = null!, lblDistTrace = null!;
+    private Action<string, string, string> _onAddLine;
+
+    public SideShotWpfWindow(string initialBearing, Action<string, string, string> onAddLine)
     {
+        _onAddLine = onAddLine;
         this.Title = "SIDE SHOT"; this.Width = 600; this.Height = 600;
         this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this.Background = UITheme.BackgroundBrush; this.ResizeMode = ResizeMode.NoResize;
+
+        this.PreviewKeyDown += (s, e) => {
+            if (e.Key == Key.Escape) { this.DialogResult = false; this.Close(); e.Handled = true; }
+        };
+
         Grid root = new Grid(); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) }); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
         Border header = new Border() { Background = UITheme.CardBrush, Padding = new Thickness(15) };
         header.Child = new TextBlock() { Text = "SIDE SHOT", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center };
@@ -1859,21 +1867,25 @@ public class SideShotWpfWindow : System.Windows.Window
 
         Border card = UITheme.CreateCard(); card.Margin = new Thickness(20); StackPanel pnl = new StackPanel();
 
-        Grid gBrg = new Grid(); gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gBrg.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
         pnl.Children.Add(UITheme.CreateLabel("BEARING"));
-        txtBrg = UITheme.CreateInputBox(); txtBrg.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; txtDist.Focus(); txtDist.SelectAll(); } };
-        Button btnCBrg = new Button() { Content = "C", Height = 35 }; btnCBrg.Click += (s, e) => { CalculatorWindow c = new CalculatorWindow(txtBrg.Text, true); c.Owner = this; if (c.ShowDialog() == true) txtBrg.Text = c.Result; };
-        Grid.SetColumn(txtBrg, 0); Grid.SetColumn(btnCBrg, 1); gBrg.Children.Add(txtBrg); gBrg.Children.Add(btnCBrg); pnl.Children.Add(gBrg); pnl.Children.Add(new Border() { Height = 15 });
+        txtBrg = UITheme.CreateInputBox(); txtBrg.PreviewKeyDown += Input_PreviewKeyDown;
+        pnl.Children.Add(txtBrg);
+        lblBrgTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, 2, 0, 15) };
+        pnl.Children.Add(lblBrgTrace);
 
-        Grid gDst = new Grid(); gDst.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) }); gDst.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(50) });
         pnl.Children.Add(UITheme.CreateLabel("DISTANCE"));
-        txtDist = UITheme.CreateInputBox(); txtDist.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; txtComm.Focus(); txtComm.SelectAll(); } };
-        Button btnCDst = new Button() { Content = "C", Height = 35 }; btnCDst.Click += (s, e) => { CalculatorWindow c = new CalculatorWindow(txtDist.Text, false); c.Owner = this; if (c.ShowDialog() == true) txtDist.Text = c.Result; };
-        Grid.SetColumn(txtDist, 0); Grid.SetColumn(btnCDst, 1); gDst.Children.Add(txtDist); gDst.Children.Add(btnCDst); pnl.Children.Add(gDst); pnl.Children.Add(new Border() { Height = 15 });
+        txtDist = UITheme.CreateInputBox(); txtDist.PreviewKeyDown += Input_PreviewKeyDown;
+        txtDist.GotFocus += (s, e) => { txtDist.BorderBrush = Brushes.WhiteSmoke; txtDist.BorderThickness = new Thickness(2); };
+        txtDist.LostFocus += (s, e) => { txtDist.BorderBrush = Brushes.Gray; txtDist.BorderThickness = new Thickness(1); };
+        pnl.Children.Add(txtDist);
+        lblDistTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, 2, 0, 15) };
+        pnl.Children.Add(lblDistTrace);
 
-        pnl.Children.Add(UITheme.CreateLabel("COMMENT")); txtComm = UITheme.CreateInputBox();
-        txtComm.PreviewKeyDown += (s, e) => { if (e.Key == Key.Enter) { this.DialogResult = true; this.Close(); } };
+        pnl.Children.Add(UITheme.CreateLabel("COMMENT")); 
+        txtComm = UITheme.CreateInputBox();
+        txtComm.PreviewKeyDown += Input_PreviewKeyDown;
         pnl.Children.Add(txtComm);
+        
         card.Child = pnl; Grid.SetRow(card, 1); root.Children.Add(card);
 
         StackPanel btns = new StackPanel() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 20) };
@@ -1882,7 +1894,70 @@ public class SideShotWpfWindow : System.Windows.Window
         btnCancel.Click += (s, e) => { this.DialogResult = false; this.Close(); };
         btnOk.Click += (s, e) => { this.DialogResult = true; this.Close(); };
         btns.Children.Add(btnCancel); btns.Children.Add(btnOk); Grid.SetRow(btns, 2); root.Children.Add(btns);
-        this.Content = root; this.Loaded += (s, e) => txtBrg.Focus();
+        this.Content = root; 
+        
+        this.Loaded += (s, e) => 
+        {
+            txtBrg.Text = initialBearing;
+            if (!string.IsNullOrWhiteSpace(txtBrg.Text)) 
+            {
+                txtDist.Focus(); 
+                txtDist.SelectAll();
+            } 
+            else 
+            {
+                txtBrg.Focus();
+            }
+        };
+    }
+
+    private void Input_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        TextBox tb = (TextBox)sender;
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            string input = tb.Text.Trim();
+            
+            if (input.Contains("+") || input.Contains("-") || input.Contains("*") || input.Contains("/"))
+            {
+                string oldVal = input;
+                string? result = ((CadastreWpfWindow)this.Owner).EvaluateInlineExpression(input, tb == txtBrg);
+                if (result != null)
+                {
+                    tb.Text = result;
+                    if (tb == txtBrg) lblBrgTrace.Text = $"{oldVal} = {result}";
+                    else if (tb == txtDist) lblDistTrace.Text = $"{oldVal} = {result}";
+                    
+                    tb.Foreground = Brushes.White; tb.FontWeight = FontWeights.Bold;
+                    var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                    timer.Tick += (s, ev) => { tb.Foreground = Brushes.Cyan; tb.FontWeight = FontWeights.Normal; timer.Stop(); };
+                    timer.Start();
+
+                    tb.SelectAll();
+                    return;
+                }
+            }
+
+            if (tb == txtBrg) 
+            {
+                txtDist.Focus(); txtDist.SelectAll(); 
+            }
+            else if (tb == txtDist || tb == txtComm) 
+            {
+                if (!string.IsNullOrWhiteSpace(txtBrg.Text) && !string.IsNullOrWhiteSpace(txtDist.Text))
+                {
+                    _onAddLine?.Invoke(txtBrg.Text, txtDist.Text, txtComm.Text);
+                    txtDist.Text = ""; txtComm.Text = "";
+                    lblBrgTrace.Text = ""; lblDistTrace.Text = "";
+                    txtDist.Focus();
+                }
+                else if (tb == txtComm)
+                {
+                    txtDist.Focus(); txtDist.SelectAll();
+                }
+            }
+        }
     }
 }
 
