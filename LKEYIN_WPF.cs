@@ -583,6 +583,54 @@ public class CadastreWpfWindow : System.Windows.Window
             }
         };
         spScale.Children.Add(txtScale);
+
+        // Visibility Toggles
+        Button btnTglBrg = new Button() { Content = "\u2221", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Yellow, ToolTip = "Toggle Bearing Visibility", Margin = new Thickness(5, 0, 0, 0) };
+        Button btnTglDist = new Button() { Content = "\u2194", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Yellow, ToolTip = "Toggle Distance Visibility", Margin = new Thickness(2, 0, 0, 0) };
+        Button btnTglPt = new Button() { Content = "\u2316", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Lime, ToolTip = "Toggle Point Number Visibility", Margin = new Thickness(2, 0, 0, 0) };
+        Button btnTglComm = new Button() { Content = "\ud83d\udcac", Width = 30, Height = 25, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.Red, ToolTip = "Toggle Comment Visibility", Margin = new Thickness(2, 0, 0, 0) };
+
+        UpdateToggleStyle(btnTglBrg, _config.TextBrg.Visible);
+        UpdateToggleStyle(btnTglDist, _config.TextDist.Visible);
+        UpdateToggleStyle(btnTglPt, _config.TextPt.Visible);
+        UpdateToggleStyle(btnTglComm, _config.TextComm.Visible);
+
+        btnTglBrg.Click += (s, e) => {
+            _config.TextBrg.Visible = !_config.TextBrg.Visible;
+            ToggleLayerVisibility(CadConstants.BDY_BEARING, _config.TextBrg.Visible);
+            ToggleLayerVisibility(CadConstants.CONNECTION_BEAR, _config.TextBrg.Visible);
+            UpdateToggleStyle(btnTglBrg, _config.TextBrg.Visible);
+            AppSettings.Save(_config);
+            _doc.Editor.Regen();
+        };
+        btnTglDist.Click += (s, e) => {
+            _config.TextDist.Visible = !_config.TextDist.Visible;
+            ToggleLayerVisibility(CadConstants.BDY_DISTANCE, _config.TextDist.Visible);
+            ToggleLayerVisibility(CadConstants.CONNECTION_DIST, _config.TextDist.Visible);
+            UpdateToggleStyle(btnTglDist, _config.TextDist.Visible);
+            AppSettings.Save(_config);
+            _doc.Editor.Regen();
+        };
+        btnTglPt.Click += (s, e) => {
+            _config.TextPt.Visible = !_config.TextPt.Visible;
+            ToggleLayerVisibility(CadConstants.POINT_NUMBER, _config.TextPt.Visible);
+            UpdateToggleStyle(btnTglPt, _config.TextPt.Visible);
+            AppSettings.Save(_config);
+            _doc.Editor.Regen();
+        };
+        btnTglComm.Click += (s, e) => {
+            _config.TextComm.Visible = !_config.TextComm.Visible;
+            ToggleLayerVisibility(CadConstants.SYMB_TEXT, _config.TextComm.Visible);
+            UpdateToggleStyle(btnTglComm, _config.TextComm.Visible);
+            AppSettings.Save(_config);
+            _doc.Editor.Regen();
+        };
+
+        spScale.Children.Add(btnTglBrg);
+        spScale.Children.Add(btnTglDist);
+        spScale.Children.Add(btnTglPt);
+        spScale.Children.Add(btnTglComm);
+
         sp.Children.Add(spScale);
 
         btnSound = new Button() { Content = "\ud83d\udd0a", FontSize = 18, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = "Toggle Audio Feedback" };
@@ -599,6 +647,11 @@ public class CadastreWpfWindow : System.Windows.Window
         sp.Children.Add(btnSound);
         sp.Children.Add(btnAbout);
         return sp;
+    }
+
+    private void UpdateToggleStyle(Button btn, bool isVisible)
+    {
+        btn.Opacity = isVisible ? 1.0 : 0.3;
     }
 
     private void UpdateAllAnnotationScales()
