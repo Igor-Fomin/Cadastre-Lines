@@ -697,6 +697,7 @@ public class CadastreWpfWindow : System.Windows.Window
                 }
 
                 tr.Commit();
+                _doc.Editor.Regen();
                 _doc.Editor.WriteMessage($"\n[Refresh] Updated {count} entities to 1:{_plotScale}.");
             }
         });
