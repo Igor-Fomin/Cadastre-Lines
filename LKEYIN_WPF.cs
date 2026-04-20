@@ -508,6 +508,10 @@ public class CadastreWpfWindow : System.Windows.Window
                 EnsureLayer(lt, CadConstants.SYMB_TEXT, 1, tr);       // Red
                 EnsureLayer(lt, CadConstants.POINT_NUMBER, 3, tr);    // Green
 
+                // Style Availability Check
+                string[] mandatoryStyles = { "STENDOT100", "STENDOT100S", "STENDOT80", "ROMANS80", "ROMAND140" };
+                foreach (var s in mandatoryStyles) GetTextStyleId(tr, s, _doc.Database);
+
                 tr.Commit();
             }
         }
@@ -616,7 +620,7 @@ public class CadastreWpfWindow : System.Windows.Window
                 }
 
                 HashSet<ObjectId> processedIds = new HashSet<ObjectId>();
-                double searchRadius = 15.0; // Fixed model-space search radius
+                double searchRadius = 150.0; // Fixed large model-space search radius
                 int count = 0;
 
                 foreach (var ln in lines)
@@ -629,7 +633,7 @@ public class CadastreWpfWindow : System.Windows.Window
                     bool isFlipped = (normAng > (Math.PI / 2) && normAng <= (3 * Math.PI / 2));
                     Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
 
-                    // Find associated texts near midpoint or endpoints (for point numbers)
+                    // Find associated texts near midpoint or endpoints
                     var nearTexts = texts.Where(t => {
                         if (processedIds.Contains(t.ObjectId)) return false;
                         Point3d tPos = (t is DBText dbt) ? dbt.Position : ((MText)t).Location;
@@ -672,6 +676,26 @@ public class CadastreWpfWindow : System.Windows.Window
                         count++;
                     }
                 }
+
+                // Final pass for any remaining unprocessed text objects on specified layers
+                foreach (var t in texts)
+                {
+                    if (processedIds.Contains(t.ObjectId)) continue;
+                    t.UpgradeOpen();
+                    double baseSize = 2.5;
+                    string styleName = "Standard";
+                    if (t.Layer == CadConstants.BDY_BEARING) { baseSize = 3.0; styleName = "STENDOT100"; }
+                    else if (t.Layer == CadConstants.BDY_DISTANCE) { baseSize = 3.0; styleName = "STENDOT100S"; }
+                    else if (t.Layer == CadConstants.CONNECTION_BEAR || t.Layer == CadConstants.CONNECTION_DIST) { baseSize = 2.5; styleName = "STENDOT80"; }
+                    else if (t.Layer == CadConstants.POINT_NUMBER) { baseSize = 2.5; styleName = "ROMAND140"; }
+                    else if (t.Layer == CadConstants.SYMB_TEXT) { baseSize = 2.5; styleName = "ROMANS80"; }
+                    
+                    double finalHeight = GetModelSize(baseSize);
+                    if (t is DBText dbt) { dbt.Height = finalHeight; dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database); dbt.ColorIndex = 256; }
+                    else if (t is MText mt) { mt.TextHeight = finalHeight; mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database); mt.ColorIndex = 256; }
+                    count++;
+                }
+
                 tr.Commit();
                 _doc.Editor.WriteMessage($"\n[Refresh] Updated {count} entities to 1:{_plotScale}.");
             }
@@ -1321,6 +1345,8 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         TextStyleTable tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
         if (tst.Has(styleName)) return tst[styleName];
+        
+        _doc.Editor.WriteMessage($"\n[Warning] Style {styleName} not found. Using current style instead.");
         return db.Textstyle;
     }
     #endregion
@@ -1479,7 +1505,8 @@ public class CadastreWpfWindow : System.Windows.Window
             {
                 BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                 BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
-                Entity txt = CreateText(finalComment, CadConstants.SYMB_TEXT, _lastCreatedVertex, AttachmentPoint.MiddleLeft, tr, _doc.Database, _config.TextComm);
+                TextSettings commSettings = new TextSettings { Style = "ROMANS80", Size = 2.5 };
+                Entity txt = CreateText(finalComment, CadConstants.SYMB_TEXT, _lastCreatedVertex, AttachmentPoint.MiddleLeft, tr, _doc.Database, commSettings);
                 ObjectId txtId = AddToDb(txt, btr, tr);
                 if (_undoStack.Count > 0) _undoStack.Peek().Add(txtId);
                 tr.Commit(); _doc.Editor.UpdateScreen();
@@ -1509,7 +1536,8 @@ public class CadastreWpfWindow : System.Windows.Window
                         double angleDeg = CadMath.ParseDmsToDegrees(rawBrg);
                         double rad = (90.0 - angleDeg) * (Math.PI / 180.0);
                         Point3d endPt = new Point3d(_currentPoint.X + (dist * Math.Cos(rad)), _currentPoint.Y + (dist * Math.Sin(rad)), _currentPoint.Z);
-                        Entity txt = CreateText(ssWin.Comment, CadConstants.SYMB_TEXT, endPt, AttachmentPoint.MiddleLeft, tr, _doc.Database, _config.TextComm);
+                        TextSettings commSettings = new TextSettings { Style = "ROMANS80", Size = 2.5 };
+                        Entity txt = CreateText(ssWin.Comment, CadConstants.SYMB_TEXT, endPt, AttachmentPoint.MiddleLeft, tr, _doc.Database, commSettings);
                         ObjectId txtId = AddToDb(txt, btr, tr);
                         if (_undoStack.Count > 0) _undoStack.Peek().Add(txtId);
                     }
