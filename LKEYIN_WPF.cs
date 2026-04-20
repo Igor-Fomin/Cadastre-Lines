@@ -567,16 +567,22 @@ public class CadastreWpfWindow : System.Windows.Window
         // Plot Scale Input
         StackPanel spScale = new StackPanel() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 15, 0) };
         spScale.Children.Add(new TextBlock() { Text = "Scale 1:", Foreground = Brushes.LightGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0), FontSize = 11 });
-        txtScale = new TextBox() { Text = _plotScale.ToString("0"), Width = 50, Height = 25, Background = UITheme.InputBackground, Foreground = Brushes.Cyan, VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center, ToolTip = "Enter target plot scale (e.g., 500 for 1:500). Updates text sizes in model space." };
+        txtScale = new TextBox() { Text = _plotScale.ToString("0"), Width = 50, Height = 25, Background = UITheme.InputBackground, Foreground = Brushes.Cyan, VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center, ToolTip = "Enter target plot scale (e.g., 500 for 1:500) and press ENTER to update drawing." };
         txtScale.TextChanged += (s, e) => { 
             if (double.TryParse(txtScale.Text, out double val) && val > 0) _plotScale = val; 
             else if (string.IsNullOrWhiteSpace(txtScale.Text)) _plotScale = 1000.0;
         };
+        txtScale.KeyDown += (s, e) => {
+            if (e.Key == Key.Enter) {
+                if (double.TryParse(txtScale.Text, out double val) && val > 0) {
+                    _plotScale = val;
+                    UpdateAllAnnotationScales();
+                    txtBearing.Focus();
+                    txtBearing.SelectAll();
+                }
+            }
+        };
         spScale.Children.Add(txtScale);
-
-        Button btnRefresh = new Button() { Content = "\u21bb", FontSize = 18, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Brushes.LightGray, Cursor = Cursors.Hand, ToolTip = "Rescale and Re-align existing annotations to current Plot Scale", Margin = new Thickness(5, 0, 0, 0) };
-        btnRefresh.Click += (s, e) => UpdateAllAnnotationScales();
-        spScale.Children.Add(btnRefresh);
         sp.Children.Add(spScale);
 
         btnSound = new Button() { Content = "\ud83d\udd0a", FontSize = 18, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand, ToolTip = "Toggle Audio Feedback" };
