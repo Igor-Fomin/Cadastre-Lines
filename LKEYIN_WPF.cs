@@ -1660,7 +1660,7 @@ public class CadastreWpfWindow : System.Windows.Window
                     BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                     BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
                     DrawGeometryToDatabase(tr, btr, brg, dist, _currentPoint, _currentLayer);
-                    if (!string.IsNullOrEmpty(comm))
+                    if (!string.IsNullOrWhiteSpace(comm))
                     {
                         double rawBrg; 
                         CadMath.TryParseBearing(brg, out rawBrg);
@@ -1857,7 +1857,7 @@ public class SideShotWpfWindow : System.Windows.Window
         this.Background = UITheme.BackgroundBrush; this.ResizeMode = ResizeMode.NoResize;
 
         this.PreviewKeyDown += (s, e) => {
-            if (e.Key == Key.Escape) { this.DialogResult = false; this.Close(); e.Handled = true; }
+            if (e.Key == Key.Escape) { this.Close(); e.Handled = true; }
         };
 
         Grid root = new Grid(); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) }); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
@@ -1888,12 +1888,10 @@ public class SideShotWpfWindow : System.Windows.Window
         
         card.Child = pnl; Grid.SetRow(card, 1); root.Children.Add(card);
 
-        StackPanel btns = new StackPanel() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 20) };
-        Button btnCancel = new Button() { Content = "CANCEL", Width = 120, Height = 45, Background = Brushes.Gray, Foreground = Brushes.White, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 20, 0) };
-        Button btnOk = new Button() { Content = "OK", Width = 120, Height = 45, Background = Brushes.DimGray, Foreground = Brushes.White, FontWeight = FontWeights.Bold };
-        btnCancel.Click += (s, e) => { this.DialogResult = false; this.Close(); };
-        btnOk.Click += (s, e) => { this.DialogResult = true; this.Close(); };
-        btns.Children.Add(btnCancel); btns.Children.Add(btnOk); Grid.SetRow(btns, 2); root.Children.Add(btns);
+        Grid btns = new Grid() { Margin = new Thickness(20, 0, 20, 20) };
+        Button btnExit = new Button() { Content = "EXIT", Height = 45, Background = UITheme.ActionBlue, Foreground = Brushes.White, FontWeight = FontWeights.Bold };
+        btnExit.Click += (s, e) => { this.Close(); };
+        btns.Children.Add(btnExit); Grid.SetRow(btns, 2); root.Children.Add(btns);
         this.Content = root; 
         
         this.Loaded += (s, e) => 
@@ -1943,18 +1941,18 @@ public class SideShotWpfWindow : System.Windows.Window
             {
                 txtDist.Focus(); txtDist.SelectAll(); 
             }
-            else if (tb == txtDist || tb == txtComm) 
+            else if (tb == txtDist)
+            {
+                txtComm.Focus(); txtComm.SelectAll();
+            }
+            else if (tb == txtComm) 
             {
                 if (!string.IsNullOrWhiteSpace(txtBrg.Text) && !string.IsNullOrWhiteSpace(txtDist.Text))
                 {
                     _onAddLine?.Invoke(txtBrg.Text, txtDist.Text, txtComm.Text);
                     txtDist.Text = ""; txtComm.Text = "";
                     lblBrgTrace.Text = ""; lblDistTrace.Text = "";
-                    txtDist.Focus();
-                }
-                else if (tb == txtComm)
-                {
-                    txtDist.Focus(); txtDist.SelectAll();
+                    txtBrg.Focus(); txtBrg.SelectAll();
                 }
             }
         }
