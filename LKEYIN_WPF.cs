@@ -1950,9 +1950,10 @@ public class SideShotWpfWindow : System.Windows.Window
                 if (!string.IsNullOrWhiteSpace(txtBrg.Text) && !string.IsNullOrWhiteSpace(txtDist.Text))
                 {
                     _onAddLine?.Invoke(txtBrg.Text, txtDist.Text, txtComm.Text);
-                    txtDist.Text = ""; txtComm.Text = "";
                     lblBrgTrace.Text = ""; lblDistTrace.Text = "";
                     txtBrg.Focus(); txtBrg.SelectAll();
+                    txtDist.SelectAll();
+                    txtComm.SelectAll();
                 }
             }
         }
