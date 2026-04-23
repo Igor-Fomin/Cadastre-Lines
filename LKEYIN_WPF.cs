@@ -197,9 +197,16 @@ public static class CadMath
     {
         // rawInput is in DDD.MMSS format (e.g. 123.4506)
         int d = (int)rawInput;
-        double ms = Math.Round((rawInput - d) * 10000, 4);
-        int m = (int)(ms / 100);
-        double s = ms % 100;
+        int mmss = (int)Math.Round((rawInput - d) * 10000);
+        int m = mmss / 100;
+        int s = mmss % 100;
+
+        if (d >= 360 || m >= 60 || s >= 60)
+        {
+            System.Windows.MessageBox.Show("Degrees < 360, Minutes < 60, and Seconds < 60 required.", "Invalid Bearing", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return -1;
+        }
+
         return d + (m / 60.0) + (s / 3600.0);
     }
 
@@ -1245,6 +1252,7 @@ public class CadastreWpfWindow : System.Windows.Window
             txtBearing.Focus();
             txtBearing.SelectAll();
             PanToPoint(pt);
+            _doc.Editor.WriteMessage($"\n[Ready] Start point set at {_currentPoint.X:0.000}, {_currentPoint.Y:0.000}");
         });
     }
 
@@ -1768,7 +1776,6 @@ public class CadastreWpfWindow : System.Windows.Window
         bool? res = w.ShowDialog();
         
         this.Visibility = System.Windows.Visibility.Visible;
-        this.Activate();
 
         if (res == true)
         {
@@ -1783,13 +1790,10 @@ public class CadastreWpfWindow : System.Windows.Window
                     PromptPointResult ppr = doc.Editor.GetPoint("\nPick Start Point: ");
                     
                     this.Visibility = System.Windows.Visibility.Visible;
-                    this.Activate();
 
                     if (ppr.Status == PromptStatus.OK)
                     {
                         SetStartPoint(ppr.Value);
-                        txtBearing.Focus();
-                        txtBearing.SelectAll();
                     }
                 }
             }
@@ -1798,6 +1802,9 @@ public class CadastreWpfWindow : System.Windows.Window
                 SetStartPoint(w.ResultPoint);
             }
         }
+        
+        this.Activate();
+        ReturnToBearing();
     }
     #endregion
 }
@@ -1855,7 +1862,12 @@ public class CoordsInputWindow : System.Windows.Window
         this.Title = "Start Point"; this.Width = 400; this.Height = 300;
         this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this.Background = UITheme.BackgroundBrush;
-        StackPanel sp = new StackPanel() { Margin = new Thickness(15) };
+        
+        this.PreviewKeyDown += (s, e) => {
+            if (e.Key == Key.Escape) { this.DialogResult = false; this.Close(); e.Handled = true; }
+        };
+
+        StackPanel sp = new StackPanel() { Margin = new Thickness(20) };
         sp.Children.Add(UITheme.CreateLabel("EASTING (X)"));
         txtE = UITheme.CreateInputBox(); sp.Children.Add(txtE);
         sp.Children.Add(UITheme.CreateLabel("NORTHING (Y)"));
@@ -1864,7 +1876,7 @@ public class CoordsInputWindow : System.Windows.Window
         txtE.KeyDown += (s, e) => { if (e.Key == Key.Enter) txtN.Focus(); };
         txtN.KeyDown += (s, e) => { if (e.Key == Key.Enter) Submit(); };
 
-        Button btnPick = UITheme.CreateActionBtn("PICK ON SCREEN", Brushes.Orange);
+        Button btnPick = new Button() { Content = UITheme.CreateShortcutContent("PgDn", "\ud83d\uddb1\ufe0f PICK"), Height = 45, Margin = new Thickness(0, 10, 0, 0), Background = UITheme.ActionBlue, Foreground = Brushes.White, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Stretch };
         btnPick.Click += (s, e) => {
             PickRequested = true;
             this.DialogResult = true;
@@ -1872,9 +1884,6 @@ public class CoordsInputWindow : System.Windows.Window
         };
         sp.Children.Add(btnPick);
 
-        Button btnOk = UITheme.CreateActionBtn("OK", Brushes.Cyan);
-        btnOk.Click += (s, e) => Submit();
-        sp.Children.Add(btnOk);
         this.Content = sp;
         this.Loaded += (s, e) => txtE.Focus();
     }
@@ -1887,6 +1896,10 @@ public class CoordsInputWindow : System.Windows.Window
             PickRequested = false;
             this.DialogResult = true;
             this.Close();
+        }
+        else
+        {
+            MessageBox.Show("Please enter valid numeric coordinates.", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 }
