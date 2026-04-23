@@ -1852,7 +1852,7 @@ public class SideShotWpfWindow : System.Windows.Window
     public SideShotWpfWindow(string initialBearing, Action<string, string, string> onAddLine)
     {
         _onAddLine = onAddLine;
-        this.Title = "SIDE SHOT"; this.Width = 600; this.Height = 600;
+        this.Title = "SIDE SHOT"; this.Width = 450; this.Height = 550;
         this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this.Background = UITheme.BackgroundBrush; this.ResizeMode = ResizeMode.NoResize;
 
@@ -1861,16 +1861,16 @@ public class SideShotWpfWindow : System.Windows.Window
         };
 
         Grid root = new Grid(); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) }); root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
-        Border header = new Border() { Background = UITheme.CardBrush, Padding = new Thickness(15) };
-        header.Child = new TextBlock() { Text = "SIDE SHOT", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center };
+        Border header = new Border() { Background = UITheme.CardBrush, Padding = new Thickness(10) };
+        header.Child = new TextBlock() { Text = "SIDE SHOT", FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center };
         Grid.SetRow(header, 0); root.Children.Add(header);
 
-        Border card = UITheme.CreateCard(); card.Margin = new Thickness(20); StackPanel pnl = new StackPanel();
+        Border card = UITheme.CreateCard(); card.Margin = new Thickness(12); StackPanel pnl = new StackPanel();
 
         pnl.Children.Add(UITheme.CreateLabel("BEARING"));
         txtBrg = UITheme.CreateInputBox(); txtBrg.PreviewKeyDown += Input_PreviewKeyDown;
         pnl.Children.Add(txtBrg);
-        lblBrgTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, 2, 0, 15) };
+        lblBrgTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, 2, 0, 8) };
         pnl.Children.Add(lblBrgTrace);
 
         pnl.Children.Add(UITheme.CreateLabel("DISTANCE"));
@@ -1878,7 +1878,7 @@ public class SideShotWpfWindow : System.Windows.Window
         txtDist.GotFocus += (s, e) => { txtDist.BorderBrush = Brushes.WhiteSmoke; txtDist.BorderThickness = new Thickness(2); };
         txtDist.LostFocus += (s, e) => { txtDist.BorderBrush = Brushes.Gray; txtDist.BorderThickness = new Thickness(1); };
         pnl.Children.Add(txtDist);
-        lblDistTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, 2, 0, 15) };
+        lblDistTrace = new TextBlock() { FontSize = 13, Foreground = Brushes.LightGray, FontStyle = FontStyles.Italic, FontWeight = FontWeights.SemiBold, Margin = new Thickness(5, 2, 0, 8) };
         pnl.Children.Add(lblDistTrace);
 
         pnl.Children.Add(UITheme.CreateLabel("COMMENT")); 
@@ -1888,8 +1888,8 @@ public class SideShotWpfWindow : System.Windows.Window
         
         card.Child = pnl; Grid.SetRow(card, 1); root.Children.Add(card);
 
-        Grid btns = new Grid() { Margin = new Thickness(20, 0, 20, 20) };
-        Button btnExit = new Button() { Content = "EXIT", Height = 45, Background = UITheme.ActionBlue, Foreground = Brushes.White, FontWeight = FontWeights.Bold };
+        Grid btns = new Grid() { Margin = new Thickness(12, 0, 12, 12) };
+        Button btnExit = new Button() { Content = "EXIT", Height = 40, FontSize = 14, Background = UITheme.ActionBlue, Foreground = Brushes.White, FontWeight = FontWeights.Bold };
         btnExit.Click += (s, e) => { this.Close(); };
         btns.Children.Add(btnExit); Grid.SetRow(btns, 2); root.Children.Add(btns);
         this.Content = root; 
