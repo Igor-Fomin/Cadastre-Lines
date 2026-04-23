@@ -572,6 +572,15 @@ public class CadastreWpfWindow : System.Windows.Window
         this.Content = mainGrid;
         this.PreviewKeyDown += Window_PreviewKeyDown;
         UpdateSoundIcon();
+
+        this.Loaded += (s, e) => 
+        {
+            if (txtBearing != null) 
+            {
+                txtBearing.Focus(); 
+                txtBearing.SelectAll();
+            }
+        };
     }
 
     private UIElement BuildHeaderIcons()
@@ -1897,15 +1906,8 @@ public class SideShotWpfWindow : System.Windows.Window
         this.Loaded += (s, e) => 
         {
             txtBrg.Text = initialBearing;
-            if (!string.IsNullOrWhiteSpace(txtBrg.Text)) 
-            {
-                txtDist.Focus(); 
-                txtDist.SelectAll();
-            } 
-            else 
-            {
-                txtBrg.Focus();
-            }
+            txtBrg.Focus();
+            txtBrg.SelectAll();
         };
     }
 
