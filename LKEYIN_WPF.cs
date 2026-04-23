@@ -235,24 +235,57 @@ public static class CadMath
         if (string.IsNullOrWhiteSpace(input)) return false;
         input = input.Trim();
 
+        string normalizedInput = input;
+        bool isValidFormat = false;
+
         // 1. Whole Degrees (e.g. "10")
         if (Regex.IsMatch(input, @"^\d+$"))
         {
-            if (double.TryParse(input, out result)) return true;
+            isValidFormat = true;
         }
         // 2. Strict formats: DDD.MMSS
         else if (Regex.IsMatch(input, @"^\d+\.\d{1,4}$"))
         {
-            if (double.TryParse(input, out result)) return true;
+            isValidFormat = true;
         }
         // 3. Strict formats: DDD MMSS
         else if (Regex.IsMatch(input, @"^\d+ \d{1,4}$"))
         {
-            string converted = input.Replace(" ", ".");
-            if (double.TryParse(converted, out result)) return true;
+            normalizedInput = input.Replace(" ", ".");
+            isValidFormat = true;
         }
 
-        return false;
+        if (!isValidFormat || !double.TryParse(normalizedInput, out result)) return false;
+
+        string[] parts = normalizedInput.Split('.');
+        if (parts.Length > 0 && int.TryParse(parts[0], out int d))
+        {
+            if (d >= 360 || d < 0)
+            {
+                System.Windows.MessageBox.Show("Degrees must be between 0 and 359.", "Invalid Bearing", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+        }
+
+        if (parts.Length > 1)
+        {
+            string frac = parts[1].PadRight(4, '0');
+            string mStr = frac.Substring(0, 2);
+            string sStr = frac.Substring(2, 2);
+
+            if (int.TryParse(mStr, out int m) && m >= 60)
+            {
+                System.Windows.MessageBox.Show($"Invalid Minutes: {mStr}. Survey format (DDD.MMSS) requires Minutes < 60.", "Invalid Bearing", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+            if (int.TryParse(sStr, out int s) && s >= 60)
+            {
+                System.Windows.MessageBox.Show($"Invalid Seconds: {sStr}. Survey format (DDD.MMSS) requires Seconds < 60.", "Invalid Bearing", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+        }
+
+        return true;
     }
 }
 #endregion
@@ -1094,12 +1127,18 @@ public class CadastreWpfWindow : System.Windows.Window
             }
             else
             {
-                if (tb == txtBearing) 
-                { 
-                    txtDistance.Focus(); 
-                    txtDistance.SelectAll(); 
-                }
-                else if (tb == txtDistance) 
+                if (tb == txtBearing)
+                {
+                    if (!CadMath.TryParseBearing(tb.Text, out double _))
+                    {
+                        lblBearingTrace.Text = "";
+                        tb.Focus();
+                        tb.SelectAll();
+                        return;
+                    }
+                    txtDistance.Focus();
+                    txtDistance.SelectAll();
+                }                else if (tb == txtDistance) 
                 {
                     if (string.IsNullOrWhiteSpace(txtBearing.Text) || string.IsNullOrWhiteSpace(txtDistance.Text))
                     {
@@ -1941,6 +1980,13 @@ public class SideShotWpfWindow : System.Windows.Window
 
             if (tb == txtBrg) 
             {
+                if (!CadMath.TryParseBearing(tb.Text, out double _))
+                {
+                    lblBrgTrace.Text = "";
+                    tb.Focus();
+                    tb.SelectAll();
+                    return;
+                }
                 txtDist.Focus(); txtDist.SelectAll(); 
             }
             else if (tb == txtDist)
