@@ -195,11 +195,11 @@ public static class CadMath
 {
     public static double ParseDmsToDegrees(double rawInput)
     {
-        // rawInput is in DDD.MMSS format (e.g. 123.4506)
+        // rawInput is in DDD.MMSS format (e.g. 10.00155 for 10°00'15.5")
         int d = (int)rawInput;
-        int mmss = (int)Math.Round((rawInput - d) * 10000);
-        int m = mmss / 100;
-        int s = mmss % 100;
+        double frac = Math.Round((rawInput - d) * 10000, 6);
+        int m = (int)(Math.Round(frac, 6) / 100);
+        double s = Math.Round(frac - (m * 100), 6);
 
         if (d >= 360 || m >= 60 || s >= 60)
         {
@@ -229,6 +229,15 @@ public static class CadMath
 
     public static string DmsToString(double dmsValue) { return dmsValue.ToString("0.0000"); }
 
+    public static string FormatAsSurveyor(double dmsValue)
+    {
+        int d = (int)dmsValue;
+        int mmss = (int)Math.Round((dmsValue - d) * 10000);
+        int m = mmss / 100;
+        int s = mmss % 100;
+        return $"{d}\u00B0{m:00}'{s:00}\"";
+    }
+
     public static double AddSubDms(double dms1, double dms2, bool add)
     {
         double deg1 = ParseDmsToDegrees(dms1); double deg2 = ParseDmsToDegrees(dms2);
@@ -251,12 +260,12 @@ public static class CadMath
             isValidFormat = true;
         }
         // 2. Strict formats: DDD.MMSS
-        else if (Regex.IsMatch(input, @"^\d+\.\d{1,4}$"))
+        else if (Regex.IsMatch(input, @"^\d+\.\d+$"))
         {
             isValidFormat = true;
         }
         // 3. Strict formats: DDD MMSS
-        else if (Regex.IsMatch(input, @"^\d+ \d{1,4}$"))
+        else if (Regex.IsMatch(input, @"^\d+ \d+$"))
         {
             normalizedInput = input.Replace(" ", ".");
             isValidFormat = true;
@@ -1106,7 +1115,7 @@ public class CadastreWpfWindow : System.Windows.Window
                 if (result != null)
                 {
                     tb.Text = result;
-                    if (tb == txtBearing) lblBearingTrace.Text = $"{oldVal} = {result}";
+                    if (tb == txtBearing) lblBearingTrace.Text = $"{oldVal} = {result} ({CadMath.FormatAsSurveyor(double.Parse(result))})";
                     else lblDistanceTrace.Text = $"{oldVal} = {result}";
                     
                     tb.Foreground = Brushes.White;
@@ -1169,14 +1178,22 @@ public class CadastreWpfWindow : System.Windows.Window
                 if (input.Contains("+"))
                 {
                     parts = input.Split('+');
-                    double v1 = double.Parse(parts[0].Trim()); double v2 = double.Parse(parts[1].Trim());
-                    return CadMath.DmsToString(CadMath.AddSubDms(v1, v2, true));
+                    double sum = double.Parse(parts[0].Trim());
+                    for (int i = 1; i < parts.Length; i++)
+                    {
+                        sum = CadMath.AddSubDms(sum, double.Parse(parts[i].Trim()), true);
+                    }
+                    return CadMath.DmsToString(sum);
                 }
                 else if (input.Contains("-"))
                 {
                     parts = input.Split('-');
-                    double v1 = double.Parse(parts[0].Trim()); double v2 = double.Parse(parts[1].Trim());
-                    return CadMath.DmsToString(CadMath.AddSubDms(v1, v2, false));
+                    double diff = double.Parse(parts[0].Trim());
+                    for (int i = 1; i < parts.Length; i++)
+                    {
+                        diff = CadMath.AddSubDms(diff, double.Parse(parts[i].Trim()), false);
+                    }
+                    return CadMath.DmsToString(diff);
                 }
             }
             
@@ -1978,7 +1995,7 @@ public class SideShotWpfWindow : System.Windows.Window
                 if (result != null)
                 {
                     tb.Text = result;
-                    if (tb == txtBrg) lblBrgTrace.Text = $"{oldVal} = {result}";
+                    if (tb == txtBrg) lblBrgTrace.Text = $"{oldVal} = {result} ({CadMath.FormatAsSurveyor(double.Parse(result))})";
                     else if (tb == txtDist) lblDistTrace.Text = $"{oldVal} = {result}";
                     
                     tb.Foreground = Brushes.White; tb.FontWeight = FontWeights.Bold;
