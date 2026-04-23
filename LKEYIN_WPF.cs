@@ -890,6 +890,7 @@ public class CadastreWpfWindow : System.Windows.Window
         mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 0: Data Card
         mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 1: Quick Actions Card
         mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 2: Layer Card
+        mainG.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto }); // 3: Annotation Card
         mainG.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) });
 
         // --- 1. DATA ENTRY CARD ---
@@ -1053,6 +1054,53 @@ public class CadastreWpfWindow : System.Windows.Window
         g.Children.Add(btnA); g.Children.Add(btnS); g.Children.Add(btnD);
         spLay.Children.Add(g); cardLay.Child = spLay;
         Grid.SetRow(cardLay, 2); mainG.Children.Add(cardLay);
+
+        // --- 4. ANNOTATION TOOLS CARD ---
+        Border cardAnn = UITheme.CreateCard();
+        cardAnn.Margin = new Thickness(15, 0, 15, 10);
+        StackPanel spAnn = new StackPanel();
+        spAnn.Children.Add(UITheme.CreateLabel("ANNOTATION TOOLS"));
+
+        Grid gAnn = new Grid();
+        gAnn.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+        gAnn.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+
+        Grid r1 = new Grid();
+        r1.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        r1.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        r1.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+
+        Button btnSwapText = UITheme.CreateActionBtn("Swap Text", UITheme.ActionBlue); btnSwapText.Height = 35; btnSwapText.Margin = new Thickness(2);
+        btnSwapText.Click += (s, e) => ExecuteUiAction(() => ExecuteSwapText());
+        Grid.SetColumn(btnSwapText, 0); r1.Children.Add(btnSwapText);
+
+        Button btnRot180 = UITheme.CreateActionBtn("+/- 180\u00B0", UITheme.ActionBlue); btnRot180.Height = 35; btnRot180.Margin = new Thickness(2);
+        btnRot180.Click += (s, e) => ExecuteUiAction(() => RotateBearingText());
+        Grid.SetColumn(btnRot180, 1); r1.Children.Add(btnRot180);
+
+        Button btnAnnotate = UITheme.CreateActionBtn("Annotate Line", UITheme.ActionBlue); btnAnnotate.Height = 35; btnAnnotate.Margin = new Thickness(2);
+        btnAnnotate.Click += (s, e) => ExecuteUiAction(() => AnnotateSelectedLine());
+        Grid.SetColumn(btnAnnotate, 2); r1.Children.Add(btnAnnotate);
+
+        Grid.SetRow(r1, 0); gAnn.Children.Add(r1);
+
+        Grid r2 = new Grid();
+        r2.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+        r2.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+
+        Button btnQld = UITheme.CreateActionBtn("QLD Format", UITheme.ActionBlue); btnQld.Height = 35; btnQld.Margin = new Thickness(2);
+        btnQld.Click += (s, e) => ExecuteUiAction(() => ApplyQLDStandards());
+        Grid.SetColumn(btnQld, 0); r2.Children.Add(btnQld);
+
+        Button btnNt = UITheme.CreateActionBtn("NT Format", UITheme.ActionBlue); btnNt.Height = 35; btnNt.Margin = new Thickness(2);
+        btnNt.Click += (s, e) => ExecuteUiAction(() => ApplyNTStandards());
+        Grid.SetColumn(btnNt, 1); r2.Children.Add(btnNt);
+
+        Grid.SetRow(r2, 1); gAnn.Children.Add(r2);
+
+        spAnn.Children.Add(gAnn);
+        cardAnn.Child = spAnn;
+        Grid.SetRow(cardAnn, 3); mainG.Children.Add(cardAnn);
 
         return mainG;
     }
@@ -1821,6 +1869,223 @@ public class CadastreWpfWindow : System.Windows.Window
         }
         
         this.Activate();
+        ReturnToBearing();
+    }
+    #endregion
+
+    #region Annotation Tools
+    private void ExecuteSwapText()
+    {
+        if (!ValidateDocument()) return;
+        var ed = _doc.Editor;
+
+        this.Visibility = System.Windows.Visibility.Collapsed;
+        System.Windows.Forms.Application.DoEvents();
+
+        PromptEntityOptions peo = new PromptEntityOptions("\nSelect boundary line to swap text: ");
+        peo.SetRejectMessage("\nOnly lines can be selected.");
+        peo.AddAllowedClass(typeof(Autodesk.AutoCAD.DatabaseServices.Line), false);
+        PromptEntityResult per = ed.GetEntity(peo);
+
+        this.Visibility = System.Windows.Visibility.Visible;
+        this.Activate();
+
+        if (per.Status == PromptStatus.OK)
+        {
+            using (DocumentLock loc = _doc.LockDocument())
+            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            {
+                Autodesk.AutoCAD.DatabaseServices.Line selLine = (Autodesk.AutoCAD.DatabaseServices.Line)tr.GetObject(per.ObjectId, OpenMode.ForRead);
+                
+                BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+                BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+
+                string[] textLayers = { CadConstants.BDY_BEARING, CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_BEAR, CadConstants.CONNECTION_DIST };
+                List<Entity> texts = new List<Entity>();
+                foreach (ObjectId id in btr)
+                {
+                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
+                    if (textLayers.Contains(ent.Layer) && (ent is DBText || ent is MText)) texts.Add(ent);
+                }
+
+                Entity bearingText = null;
+                Entity distText = null;
+
+                double tolerance = 0.02;
+                Point3d mid = selLine.StartPoint + (selLine.EndPoint - selLine.StartPoint) / 2.0;
+
+                foreach (var t in texts)
+                {
+                    double textRot = (t is DBText dbt1) ? dbt1.Rotation : ((MText)t).Rotation;
+                    Point3d tPos = (t is DBText dbt2) ? ((dbt2.Justify == AttachmentPoint.BaseLeft) ? dbt2.Position : dbt2.AlignmentPoint) : ((MText)t).Location;
+
+                    double angle = selLine.Angle;
+                    double diff1 = Math.Abs(angle - textRot) % (Math.PI * 2);
+                    double diff2 = Math.Abs(angle + Math.PI - textRot) % (Math.PI * 2);
+                    diff1 = Math.Min(diff1, Math.PI * 2 - diff1);
+                    diff2 = Math.Min(diff2, Math.PI * 2 - diff2);
+
+                    if (diff1 <= tolerance || diff2 <= tolerance)
+                    {
+                        if (tPos.DistanceTo(mid) < GetModelSize(5.0))
+                        {
+                            if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR)
+                                bearingText = t;
+                            else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST)
+                                distText = t;
+                        }
+                    }
+                }
+
+                if (bearingText != null && distText != null)
+                {
+                    bearingText.UpgradeOpen();
+                    distText.UpgradeOpen();
+
+                    Point3d brgPos = (bearingText is DBText dbtBrg) ? ((dbtBrg.Justify == AttachmentPoint.BaseLeft) ? dbtBrg.Position : dbtBrg.AlignmentPoint) : ((MText)bearingText).Location;
+                    Point3d distPos = (distText is DBText dbtDst) ? ((dbtDst.Justify == AttachmentPoint.BaseLeft) ? dbtDst.Position : dbtDst.AlignmentPoint) : ((MText)distText).Location;
+
+                    if (bearingText is DBText bDB)
+                    {
+                        if (bDB.Justify == AttachmentPoint.BaseLeft) bDB.Position = distPos;
+                        else bDB.AlignmentPoint = distPos;
+                    }
+                    else if (bearingText is MText bMT) bMT.Location = distPos;
+
+                    if (distText is DBText dDB)
+                    {
+                        if (dDB.Justify == AttachmentPoint.BaseLeft) dDB.Position = brgPos;
+                        else dDB.AlignmentPoint = brgPos;
+                    }
+                    else if (distText is MText dMT) dMT.Location = brgPos;
+
+                    tr.Commit();
+                    ed.UpdateScreen();
+                    ed.WriteMessage("\n[Swap] Bearing and Distance text positions swapped.");
+                }
+                else
+                {
+                    ed.WriteMessage("\n[Error] Could not locate both bearing and distance text for this line.");
+                }
+            }
+        }
+        ReturnToBearing();
+    }
+
+    private void RotateBearingText()
+    {
+        if (!ValidateDocument()) return;
+        var ed = _doc.Editor;
+
+        this.Visibility = System.Windows.Visibility.Collapsed;
+        System.Windows.Forms.Application.DoEvents();
+
+        PromptSelectionOptions pso = new PromptSelectionOptions();
+        pso.MessageForAdding = "\nSelect bearing text to rotate (+/- 180°): ";
+        
+        TypedValue[] filter = new TypedValue[]
+        {
+            new TypedValue((int)DxfCode.Operator, "<OR"),
+            new TypedValue((int)DxfCode.Start, "TEXT"),
+            new TypedValue((int)DxfCode.Start, "MTEXT"),
+            new TypedValue((int)DxfCode.Operator, "OR>")
+        };
+        PromptSelectionResult psr = ed.GetSelection(pso, new SelectionFilter(filter));
+
+        this.Visibility = System.Windows.Visibility.Visible;
+        this.Activate();
+
+        if (psr.Status == PromptStatus.OK)
+        {
+            using (DocumentLock loc = _doc.LockDocument())
+            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            {
+                int count = 0;
+                foreach (ObjectId id in psr.Value.GetObjectIds())
+                {
+                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForWrite);
+                    if (ent.Layer == CadConstants.BDY_BEARING || ent.Layer == CadConstants.CONNECTION_BEAR)
+                    {
+                        string txt = (ent is DBText dbt) ? dbt.TextString : ((MText)ent).Contents;
+                        
+                        if (CadMath.TryParseBearing(txt, out double currentBrg))
+                        {
+                            double newBrg = CadMath.AddSubDms(currentBrg, 180.0, true);
+                            string formatted = CadMath.FormatAsSurveyor(newBrg);
+                            if (ent is DBText d) d.TextString = formatted;
+                            else if (ent is MText m) m.Contents = formatted;
+                            count++;
+                        }
+                    }
+                }
+                tr.Commit();
+                ed.UpdateScreen();
+                ed.WriteMessage($"\n[Rotate] Rotated {count} bearing text(s) by 180°.");
+            }
+        }
+        ReturnToBearing();
+    }
+
+    private void AnnotateSelectedLine()
+    {
+        if (!ValidateDocument()) return;
+        var ed = _doc.Editor;
+
+        this.Visibility = System.Windows.Visibility.Collapsed;
+        System.Windows.Forms.Application.DoEvents();
+
+        PromptEntityOptions peo = new PromptEntityOptions("\nSelect line to annotate: ");
+        peo.SetRejectMessage("\nOnly lines can be selected.");
+        peo.AddAllowedClass(typeof(Autodesk.AutoCAD.DatabaseServices.Line), false);
+        PromptEntityResult per = ed.GetEntity(peo);
+
+        this.Visibility = System.Windows.Visibility.Visible;
+        this.Activate();
+
+        if (per.Status == PromptStatus.OK)
+        {
+            using (DocumentLock loc = _doc.LockDocument())
+            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            {
+                Autodesk.AutoCAD.DatabaseServices.Line selLine = (Autodesk.AutoCAD.DatabaseServices.Line)tr.GetObject(per.ObjectId, OpenMode.ForRead);
+                
+                double dist = selLine.Length;
+                double cadAngleRad = selLine.Angle;
+                
+                double angleDeg = 90.0 - (cadAngleRad * 180.0 / Math.PI);
+                if (angleDeg < 0) angleDeg += 360.0;
+                
+                double rawBrg = double.Parse(CadMath.DegreesToDmsString(angleDeg));
+                
+                BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+                BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                string originalLayer = _currentLayer;
+                _currentLayer = selLine.Layer;
+
+                List<ObjectId> created = CreateAnnotatedText(btr, tr, selLine, rawBrg, dist, cadAngleRad);
+                if (_undoStack.Count > 0) _undoStack.Peek().AddRange(created);
+                else _undoStack.Push(created);
+
+                _currentLayer = originalLayer;
+
+                tr.Commit();
+                ed.UpdateScreen();
+                ed.WriteMessage("\n[Annotate] Line annotated.");
+            }
+        }
+        ReturnToBearing();
+    }
+
+    private void ApplyQLDStandards()
+    {
+        _doc.Editor.WriteMessage("\n[Tools] Formatting logic for this standard will be added soon.");
+        ReturnToBearing();
+    }
+
+    private void ApplyNTStandards()
+    {
+        _doc.Editor.WriteMessage("\n[Tools] Formatting logic for this standard will be added soon.");
         ReturnToBearing();
     }
     #endregion
