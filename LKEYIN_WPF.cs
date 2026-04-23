@@ -599,7 +599,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void InitializeCustomUI()
     {
-        this.Title = "CADASTRE PRO"; this.Width = 600; this.Height = 750;
+        this.Title = "CADASTRE LINES"; this.Width = 600; this.Height = 750;
         this.Topmost = true; this.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         this.Background = UITheme.BackgroundBrush;
 
