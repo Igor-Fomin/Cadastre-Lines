@@ -471,7 +471,27 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         _doc = doc;
         _config = AppSettings.Load();
-        
+
+        try
+        {
+            Database db = HostApplicationServices.WorkingDatabase;
+            AnnotationScale scale = db.Cannoscale;
+            double factor = scale.DrawingUnits / scale.PaperUnits;
+
+            if (factor <= 0 || double.IsNaN(factor) || double.IsInfinity(factor))
+            {
+                _plotScale = 1000.0;
+            }
+            else
+            {
+                _plotScale = factor;
+            }
+            _doc.Editor.WriteMessage($"\nDEBUG: Detected Annotation Scale is 1:{_plotScale}");
+        }
+        catch
+        {
+            _plotScale = 1000.0;
+        }
         InitializeCustomUI();
         InitializeProjectLayers();
         UpdateLayerButtons();
