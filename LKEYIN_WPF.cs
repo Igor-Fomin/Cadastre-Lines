@@ -2067,50 +2067,58 @@ public class CadastreWpfWindow : System.Windows.Window
         if (!ValidateDocument()) return;
         var ed = _doc.Editor;
 
-        this.Visibility = System.Windows.Visibility.Collapsed;
-        System.Windows.Forms.Application.DoEvents();
-
-        PromptEntityOptions peo = new PromptEntityOptions("\nSelect line to annotate: ");
-        peo.SetRejectMessage("\nOnly lines can be selected.");
-        peo.AddAllowedClass(typeof(Autodesk.AutoCAD.DatabaseServices.Line), false);
-        PromptEntityResult per = ed.GetEntity(peo);
-
-        this.Visibility = System.Windows.Visibility.Visible;
-        this.Activate();
-
-        if (per.Status == PromptStatus.OK)
+        try
         {
-            using (DocumentLock loc = _doc.LockDocument())
-            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            while (true)
             {
-                Autodesk.AutoCAD.DatabaseServices.Line selLine = (Autodesk.AutoCAD.DatabaseServices.Line)tr.GetObject(per.ObjectId, OpenMode.ForRead);
-                
-                double dist = selLine.Length;
-                double cadAngleRad = selLine.Angle;
-                
-                double angleDeg = 90.0 - (cadAngleRad * 180.0 / Math.PI);
-                if (angleDeg < 0) angleDeg += 360.0;
-                
-                double rawBrg = double.Parse(CadMath.DegreesToDmsString(angleDeg));
-                
-                BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
-                BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+                this.Visibility = System.Windows.Visibility.Collapsed;
+                System.Windows.Forms.Application.DoEvents();
 
-                string originalLayer = _currentLayer;
-                _currentLayer = selLine.Layer;
+                PromptEntityOptions peo = new PromptEntityOptions("\nSelect line to annotate (or press ESC to exit): ");
+                peo.SetRejectMessage("\nOnly lines can be selected.");
+                peo.AddAllowedClass(typeof(Autodesk.AutoCAD.DatabaseServices.Line), false);
+                PromptEntityResult per = ed.GetEntity(peo);
 
-                List<ObjectId> created = CreateAnnotatedText(btr, tr, selLine, rawBrg, dist, cadAngleRad);
-                if (_undoStack.Count > 0) _undoStack.Peek().AddRange(created);
-                else _undoStack.Push(created);
+                if (per.Status == PromptStatus.Cancel) break;
+                if (per.Status != PromptStatus.OK) continue;
 
-                _currentLayer = originalLayer;
+                using (DocumentLock loc = _doc.LockDocument())
+                using (Transaction tr = _doc.TransactionManager.StartTransaction())
+                {
+                    Autodesk.AutoCAD.DatabaseServices.Line selLine = (Autodesk.AutoCAD.DatabaseServices.Line)tr.GetObject(per.ObjectId, OpenMode.ForRead);
 
-                tr.Commit();
-                ed.UpdateScreen();
-                ed.WriteMessage("\n[Annotate] Line annotated.");
+                    double dist = selLine.Length;
+                    double cadAngleRad = selLine.Angle;
+
+                    double angleDeg = 90.0 - (cadAngleRad * 180.0 / Math.PI);
+                    if (angleDeg < 0) angleDeg += 360.0;
+
+                    double rawBrg = double.Parse(CadMath.DegreesToDmsString(angleDeg));
+
+                    BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+                    BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+                    string originalLayer = _currentLayer;
+                    _currentLayer = selLine.Layer;
+
+                    List<ObjectId> created = CreateAnnotatedText(btr, tr, selLine, rawBrg, dist, cadAngleRad);
+                    if (_undoStack.Count > 0) _undoStack.Peek().AddRange(created);
+                    else _undoStack.Push(created);
+
+                    _currentLayer = originalLayer;
+
+                    tr.Commit();
+                    ed.UpdateScreen();
+                    ed.WriteMessage("\n[Annotate] Line annotated.");
+                }
             }
         }
-        ReturnToBearing();
+        finally
+        {
+            this.Visibility = System.Windows.Visibility.Visible;
+            this.Activate();
+            ReturnToBearing();
+        }
     }
 
     private void ApplyQLDStandards()
