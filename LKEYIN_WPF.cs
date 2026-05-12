@@ -249,7 +249,11 @@ public static class CadMath
     {
         result = 0;
         if (string.IsNullOrWhiteSpace(input)) return false;
-        input = input.Trim();
+
+        // Clean input: handle labels with symbols (e.g., 120°29'00") by converting to DDD.MMSS format
+        string cleaned = input.Replace("\u00B0", ".").Replace("°", ".").Replace("'", "").Replace("\"", "");
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"[^0-9. ]", "");
+        input = cleaned.Trim();
 
         string normalizedInput = input;
         bool isValidFormat = false;
