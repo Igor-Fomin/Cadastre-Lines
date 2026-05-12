@@ -1902,88 +1902,96 @@ public class CadastreWpfWindow : System.Windows.Window
         this.Visibility = System.Windows.Visibility.Collapsed;
         System.Windows.Forms.Application.DoEvents();
 
-        PromptEntityOptions peo = new PromptEntityOptions("\nSelect boundary line to swap text: ");
-        peo.SetRejectMessage("\nOnly lines can be selected.");
-        peo.AddAllowedClass(typeof(Autodesk.AutoCAD.DatabaseServices.Line), false);
-        PromptEntityResult per = ed.GetEntity(peo);
-
-        this.Visibility = System.Windows.Visibility.Visible;
-        this.Activate();
-
-        if (per.Status == PromptStatus.OK)
+        try
         {
-            using (DocumentLock loc = _doc.LockDocument())
-            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            while (true)
             {
-                Autodesk.AutoCAD.DatabaseServices.Line selLine = (Autodesk.AutoCAD.DatabaseServices.Line)tr.GetObject(per.ObjectId, OpenMode.ForRead);
-                BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
-                BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+                PromptEntityOptions peo = new PromptEntityOptions("\nSelect boundary line to swap text (or press ESC to exit): ");
+                peo.SetRejectMessage("\nOnly lines can be selected.");
+                peo.AddAllowedClass(typeof(Autodesk.AutoCAD.DatabaseServices.Line), false);
+                PromptEntityResult per = ed.GetEntity(peo);
 
-                string[] bearingLayers = { CadConstants.BDY_BEARING, CadConstants.CONNECTION_BEAR };
-                string[] distanceLayers = { CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_DIST };
+                if (per.Status == PromptStatus.Cancel) break;
+                if (per.Status != PromptStatus.OK) continue;
 
-                Entity bearingText = null;
-                Entity distText = null;
-                double tolerance = GetModelSize(5.0);
-                Point3d mid = selLine.StartPoint + (selLine.EndPoint - selLine.StartPoint) / 2.0;
-
-                foreach (ObjectId id in btr)
+                using (DocumentLock loc = _doc.LockDocument())
+                using (Transaction tr = _doc.TransactionManager.StartTransaction())
                 {
-                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
-                    if (ent is DBText || ent is MText)
+                    Autodesk.AutoCAD.DatabaseServices.Line selLine = (Autodesk.AutoCAD.DatabaseServices.Line)tr.GetObject(per.ObjectId, OpenMode.ForRead);
+                    BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+                    BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+
+                    string[] bearingLayers = { CadConstants.BDY_BEARING, CadConstants.CONNECTION_BEAR };
+                    string[] distanceLayers = { CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_DIST };
+
+                    Entity bearingText = null;
+                    Entity distText = null;
+                    double tolerance = GetModelSize(5.0);
+                    Point3d mid = selLine.StartPoint + (selLine.EndPoint - selLine.StartPoint) / 2.0;
+
+                    foreach (ObjectId id in btr)
                     {
-                        Point3d tPos = (ent is DBText dbt) ? ((dbt.Justify == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint) : ((MText)ent).Location;
-                        if (tPos.DistanceTo(mid) < tolerance)
+                        Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
+                        if (ent is DBText || ent is MText)
                         {
-                            if (bearingLayers.Contains(ent.Layer)) bearingText = ent;
-                            else if (distanceLayers.Contains(ent.Layer)) distText = ent;
+                            Point3d tPos = (ent is DBText dbt) ? ((dbt.Justify == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint) : ((MText)ent).Location;
+                            if (tPos.DistanceTo(mid) < tolerance)
+                            {
+                                if (bearingLayers.Contains(ent.Layer)) bearingText = ent;
+                                else if (distanceLayers.Contains(ent.Layer)) distText = ent;
+                            }
                         }
                     }
-                }
 
-                if (bearingText != null && distText != null)
-                {
-                    bearingText.UpgradeOpen();
-                    distText.UpgradeOpen();
-
-                    // Record Coordinates
-                    Point3d brgCoord = (bearingText is DBText dbtB) ? ((dbtB.Justify == AttachmentPoint.BaseLeft) ? dbtB.Position : dbtB.AlignmentPoint) : ((MText)bearingText).Location;
-                    Point3d distCoord = (distText is DBText dbtD) ? ((dbtD.Justify == AttachmentPoint.BaseLeft) ? dbtD.Position : dbtD.AlignmentPoint) : ((MText)distText).Location;
-
-                    // Swap Justifications & Apply Swapped Coordinates
-                    if (bearingText is DBText bTxt)
+                    if (bearingText != null && distText != null)
                     {
-                        bTxt.Justify = AttachmentPoint.TopCenter;
-                        bTxt.AlignmentPoint = distCoord;
-                    }
-                    else if (bearingText is MText bM)
-                    {
-                        bM.Attachment = AttachmentPoint.TopCenter;
-                        bM.Location = distCoord;
-                    }
+                        bearingText.UpgradeOpen();
+                        distText.UpgradeOpen();
 
-                    if (distText is DBText dTxt)
-                    {
-                        dTxt.Justify = AttachmentPoint.BottomCenter;
-                        dTxt.AlignmentPoint = brgCoord;
-                    }
-                    else if (distText is MText dM)
-                    {
-                        dM.Attachment = AttachmentPoint.BottomCenter;
-                        dM.Location = brgCoord;
-                    }
+                        Point3d brgCoord = (bearingText is DBText dbtB) ? dbtB.AlignmentPoint : ((MText)bearingText).Location;
+                        Point3d distCoord = (distText is DBText dbtD) ? dbtD.AlignmentPoint : ((MText)distText).Location;
+                        AttachmentPoint brgJust = (bearingText is DBText dB) ? dB.Justify : ((MText)bearingText).Attachment;
+                        AttachmentPoint distJust = (distText is DBText dD) ? dD.Justify : ((MText)distText).Attachment;
 
-                    tr.Commit();
-                    ed.UpdateScreen();
-                    ed.WriteMessage("\n[Swap] Labels swapped with updated justifications.");
-                }
-                else
-                {
-                    ed.WriteMessage("\n[Error] Could not locate both bearing and distance labels for this line.");
+                        // Condition A: Standard -> Swapped
+                        if (brgJust == AttachmentPoint.BottomCenter)
+                        {
+                            UpdateTextJustAndPos(bearingText, AttachmentPoint.TopCenter, distCoord);
+                            UpdateTextJustAndPos(distText, AttachmentPoint.BottomCenter, brgCoord);
+                        }
+                        // Condition B: Swapped -> Standard
+                        else
+                        {
+                            UpdateTextJustAndPos(bearingText, AttachmentPoint.BottomCenter, distCoord);
+                            UpdateTextJustAndPos(distText, AttachmentPoint.TopCenter, brgCoord);
+                        }
+
+                        tr.Commit();
+                        ed.UpdateScreen();
+                    }
                 }
             }
         }
-        ReturnToBearing();
+        finally
+        {
+            this.Visibility = System.Windows.Visibility.Visible;
+            this.Activate();
+            ReturnToBearing();
+        }
+    }
+
+    private void UpdateTextJustAndPos(Entity ent, AttachmentPoint just, Point3d pos)
+    {
+        if (ent is DBText dbt)
+        {
+            dbt.Justify = just;
+            dbt.AlignmentPoint = pos;
+        }
+        else if (ent is MText mt)
+        {
+            mt.Attachment = just;
+            mt.Location = pos;
+        }
     }
 
     private void RotateBearingText()
