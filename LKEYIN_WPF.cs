@@ -2145,44 +2145,59 @@ public class CadastreWpfWindow : System.Windows.Window
             foreach (ObjectId id in btr)
             {
                 Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
-                if (!(ent is DBText || ent is MText)) continue;
-
-                string oldText = (ent is DBText dbt) ? dbt.TextString : ((MText)ent).Contents;
-                string newText = oldText;
-
-                // Bearings
-                if (bearingLayers.Contains(ent.Layer))
+                
+                // Batch Processing: Process only DBText objects on specific layers
+                if (ent is DBText dbt)
                 {
-                    // Remove 00" then remove 00'
-                    if (newText.EndsWith("00\"")) newText = newText.Substring(0, newText.Length - 3);
-                    if (newText.EndsWith("00'")) newText = newText.Substring(0, newText.Length - 3);
-                }
-                // Distances
-                else if (distanceLayers.Contains(ent.Layer))
-                {
-                    if (double.TryParse(oldText, out double val))
+                    bool isBearing = bearingLayers.Contains(ent.Layer);
+                    bool isDistance = distanceLayers.Contains(ent.Layer);
+                    
+                    if (!isBearing && !isDistance) continue;
+
+                    string oldText = dbt.TextString;
+                    string newText = oldText;
+
+                    if (isBearing)
                     {
-                        if (val == 1.0) newText = "1.0";
-                        else
+                        // Bearing Formatting Logic: Regex sequential clean-up
+                        newText = Regex.Replace(newText, @"00""$", "");
+                        newText = Regex.Replace(newText, @"00'$", "");
+                    }
+                    else if (isDistance)
+                    {
+                        // Distance Formatting Logic
+                        if (double.TryParse(oldText, out double val))
                         {
-                            // Remove trailing zeros and unnecessary decimal point
-                            newText = val.ToString("G29");
+                            // The "1.0" Exception
+                            if (Math.Abs(val - 1.0) < 0.0000001) 
+                            {
+                                newText = "1.0";
+                            }
+                            else 
+                            {
+                                // General Rules: Remove trailing zeros and unnecessary decimal points
+                                newText = val.ToString("G29");
+                            }
                         }
                     }
-                }
 
-                if (newText != oldText)
-                {
-                    ent.UpgradeOpen();
-                    if (ent is DBText d) d.TextString = newText;
-                    else if (ent is MText m) m.Contents = newText;
-                    updateCount++;
+                    if (newText != oldText)
+                    {
+                        ent.UpgradeOpen();
+                        
+                        // Preserve Text Position: Record AlignmentPoint before modifying
+                        Point3d anchor = dbt.AlignmentPoint;
+                        dbt.TextString = newText;
+                        dbt.AlignmentPoint = anchor;
+                        
+                        updateCount++;
+                    }
                 }
             }
             tr.Commit();
         }
 
-        ed.WriteMessage($"\n[NT Format] Checked drawing. Updated {updateCount} labels.");
+        ed.WriteMessage($"\n[NT Format] Drawing check complete. {updateCount} labels updated.");
         ed.UpdateScreen();
         ed.Regen();
         ReturnToBearing();
