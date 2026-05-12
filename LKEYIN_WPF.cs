@@ -2124,6 +2124,35 @@ public class CadastreWpfWindow : System.Windows.Window
         ReturnToBearing();
     }
 
+    private string RemoveTrailingZerosNT(string input)
+    {
+        Match m = Regex.Match(input, @"^([\d.]+)\s*(.*)$");
+        if (m.Success)
+        {
+            string numPart = m.Groups[1].Value;
+            string suffixPart = m.Groups[2].Value;
+
+            if (decimal.TryParse(numPart, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val))
+            {
+                string formattedNum = (val == 1.0m) ? "1.0" : val.ToString("G29");
+                return formattedNum + suffixPart;
+            }
+        }
+        return input;
+    }
+
+    private string FormatBearingNT(string input)
+    {
+        // Rule 1: Remove 00" if it follows minutes
+        string result = Regex.Replace(input, @"00""", "");
+        // Rule 2: Remove 00' if it result ends with it (sequential cleanup)
+        // Actually, the requirement says "if the result now ends in 00', remove that as well" 
+        // but also "ignores any text following the symbols".
+        // Let's use a more precise regex to target 00' specifically when it's part of the bearing.
+        result = Regex.Replace(result, @"00'", "");
+        return result;
+    }
+
     private void ApplyNTStandards()
     {
         if (!ValidateDocument()) return;
@@ -2155,25 +2184,11 @@ public class CadastreWpfWindow : System.Windows.Window
 
                     if (isBearing)
                     {
-                        if (newText.EndsWith("00\""))
-                            newText = newText.Substring(0, newText.Length - 3);
-                        
-                        if (newText.EndsWith("00'"))
-                            newText = newText.Substring(0, newText.Length - 3);
+                        newText = FormatBearingNT(oldText);
                     }
                     else if (isDistance)
                     {
-                        if (decimal.TryParse(oldText, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val))
-                        {
-                            if (val == 1.0m)
-                            {
-                                newText = "1.0";
-                            }
-                            else
-                            {
-                                newText = val.ToString("G29");
-                            }
-                        }
+                        newText = RemoveTrailingZerosNT(oldText);
                     }
 
                     if (newText != oldText)
@@ -2193,6 +2208,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
         ed.WriteMessage($"\n[NT Format] Drawing sweep complete. Updated {updateCount} labels.");
         ed.UpdateScreen();
+        ed.Regen();
         ReturnToBearing();
     }
     #endregion
