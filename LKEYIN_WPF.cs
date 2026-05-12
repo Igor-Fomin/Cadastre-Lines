@@ -1916,43 +1916,27 @@ public class CadastreWpfWindow : System.Windows.Window
             using (Transaction tr = _doc.TransactionManager.StartTransaction())
             {
                 Autodesk.AutoCAD.DatabaseServices.Line selLine = (Autodesk.AutoCAD.DatabaseServices.Line)tr.GetObject(per.ObjectId, OpenMode.ForRead);
-                
                 BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                 BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
 
-                string[] textLayers = { CadConstants.BDY_BEARING, CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_BEAR, CadConstants.CONNECTION_DIST };
-                List<Entity> texts = new List<Entity>();
-                foreach (ObjectId id in btr)
-                {
-                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
-                    if (textLayers.Contains(ent.Layer) && (ent is DBText || ent is MText)) texts.Add(ent);
-                }
+                string[] bearingLayers = { CadConstants.BDY_BEARING, CadConstants.CONNECTION_BEAR };
+                string[] distanceLayers = { CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_DIST };
 
                 Entity bearingText = null;
                 Entity distText = null;
-
-                double tolerance = 0.02;
+                double tolerance = GetModelSize(5.0);
                 Point3d mid = selLine.StartPoint + (selLine.EndPoint - selLine.StartPoint) / 2.0;
 
-                foreach (var t in texts)
+                foreach (ObjectId id in btr)
                 {
-                    double textRot = (t is DBText dbt1) ? dbt1.Rotation : ((MText)t).Rotation;
-                    Point3d tPos = (t is DBText dbt2) ? ((dbt2.Justify == AttachmentPoint.BaseLeft) ? dbt2.Position : dbt2.AlignmentPoint) : ((MText)t).Location;
-
-                    double angle = selLine.Angle;
-                    double diff1 = Math.Abs(angle - textRot) % (Math.PI * 2);
-                    double diff2 = Math.Abs(angle + Math.PI - textRot) % (Math.PI * 2);
-                    diff1 = Math.Min(diff1, Math.PI * 2 - diff1);
-                    diff2 = Math.Min(diff2, Math.PI * 2 - diff2);
-
-                    if (diff1 <= tolerance || diff2 <= tolerance)
+                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
+                    if (ent is DBText || ent is MText)
                     {
-                        if (tPos.DistanceTo(mid) < GetModelSize(5.0))
+                        Point3d tPos = (ent is DBText dbt) ? ((dbt.Justify == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint) : ((MText)ent).Location;
+                        if (tPos.DistanceTo(mid) < tolerance)
                         {
-                            if (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR)
-                                bearingText = t;
-                            else if (t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST)
-                                distText = t;
+                            if (bearingLayers.Contains(ent.Layer)) bearingText = ent;
+                            else if (distanceLayers.Contains(ent.Layer)) distText = ent;
                         }
                     }
                 }
@@ -1962,30 +1946,40 @@ public class CadastreWpfWindow : System.Windows.Window
                     bearingText.UpgradeOpen();
                     distText.UpgradeOpen();
 
-                    Point3d brgPos = (bearingText is DBText dbtBrg) ? ((dbtBrg.Justify == AttachmentPoint.BaseLeft) ? dbtBrg.Position : dbtBrg.AlignmentPoint) : ((MText)bearingText).Location;
-                    Point3d distPos = (distText is DBText dbtDst) ? ((dbtDst.Justify == AttachmentPoint.BaseLeft) ? dbtDst.Position : dbtDst.AlignmentPoint) : ((MText)distText).Location;
+                    // Record Coordinates
+                    Point3d brgCoord = (bearingText is DBText dbtB) ? ((dbtB.Justify == AttachmentPoint.BaseLeft) ? dbtB.Position : dbtB.AlignmentPoint) : ((MText)bearingText).Location;
+                    Point3d distCoord = (distText is DBText dbtD) ? ((dbtD.Justify == AttachmentPoint.BaseLeft) ? dbtD.Position : dbtD.AlignmentPoint) : ((MText)distText).Location;
 
-                    if (bearingText is DBText bDB)
+                    // Swap Justifications & Apply Swapped Coordinates
+                    if (bearingText is DBText bTxt)
                     {
-                        if (bDB.Justify == AttachmentPoint.BaseLeft) bDB.Position = distPos;
-                        else bDB.AlignmentPoint = distPos;
+                        bTxt.Justify = AttachmentPoint.TopCenter;
+                        bTxt.AlignmentPoint = distCoord;
                     }
-                    else if (bearingText is MText bMT) bMT.Location = distPos;
+                    else if (bearingText is MText bM)
+                    {
+                        bM.Attachment = AttachmentPoint.TopCenter;
+                        bM.Location = distCoord;
+                    }
 
-                    if (distText is DBText dDB)
+                    if (distText is DBText dTxt)
                     {
-                        if (dDB.Justify == AttachmentPoint.BaseLeft) dDB.Position = brgPos;
-                        else dDB.AlignmentPoint = brgPos;
+                        dTxt.Justify = AttachmentPoint.BottomCenter;
+                        dTxt.AlignmentPoint = brgCoord;
                     }
-                    else if (distText is MText dMT) dMT.Location = brgPos;
+                    else if (distText is MText dM)
+                    {
+                        dM.Attachment = AttachmentPoint.BottomCenter;
+                        dM.Location = brgCoord;
+                    }
 
                     tr.Commit();
                     ed.UpdateScreen();
-                    ed.WriteMessage("\n[Swap] Bearing and Distance text positions swapped.");
+                    ed.WriteMessage("\n[Swap] Labels swapped with updated justifications.");
                 }
                 else
                 {
-                    ed.WriteMessage("\n[Error] Could not locate both bearing and distance text for this line.");
+                    ed.WriteMessage("\n[Error] Could not locate both bearing and distance labels for this line.");
                 }
             }
         }
