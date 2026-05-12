@@ -1094,7 +1094,7 @@ public class CadastreWpfWindow : System.Windows.Window
         btnSwapText.Click += (s, e) => ExecuteUiAction(() => ExecuteSwapText());
         Grid.SetColumn(btnSwapText, 0); r1.Children.Add(btnSwapText);
 
-        Button btnRot180 = UITheme.CreateActionBtn("+/- 180\u00B0", UITheme.ActionBlue); btnRot180.Height = 35; btnRot180.Margin = new Thickness(2);
+        Button btnRot180 = UITheme.CreateActionBtn("180\u00B0 Text", UITheme.ActionBlue); btnRot180.Height = 35; btnRot180.Margin = new Thickness(2);
         btnRot180.Click += (s, e) => ExecuteUiAction(() => RotateBearingText());
         Grid.SetColumn(btnRot180, 1); r1.Children.Add(btnRot180);
 
@@ -1999,53 +1999,57 @@ public class CadastreWpfWindow : System.Windows.Window
         if (!ValidateDocument()) return;
         var ed = _doc.Editor;
 
-        this.Visibility = System.Windows.Visibility.Collapsed;
-        System.Windows.Forms.Application.DoEvents();
-
-        PromptSelectionOptions pso = new PromptSelectionOptions();
-        pso.MessageForAdding = "\nSelect bearing text to rotate (+/- 180°): ";
-        
-        TypedValue[] filter = new TypedValue[]
+        try
         {
-            new TypedValue((int)DxfCode.Operator, "<OR"),
-            new TypedValue((int)DxfCode.Start, "TEXT"),
-            new TypedValue((int)DxfCode.Start, "MTEXT"),
-            new TypedValue((int)DxfCode.Operator, "OR>")
-        };
-        PromptSelectionResult psr = ed.GetSelection(pso, new SelectionFilter(filter));
-
-        this.Visibility = System.Windows.Visibility.Visible;
-        this.Activate();
-
-        if (psr.Status == PromptStatus.OK)
-        {
-            using (DocumentLock loc = _doc.LockDocument())
-            using (Transaction tr = _doc.TransactionManager.StartTransaction())
+            while (true)
             {
-                int count = 0;
-                foreach (ObjectId id in psr.Value.GetObjectIds())
+                this.Visibility = System.Windows.Visibility.Collapsed;
+                System.Windows.Forms.Application.DoEvents();
+
+                PromptEntityOptions peo = new PromptEntityOptions("\nSelect bearing TEXT to flip 180\u00B0 (or press ESC to exit): ");
+                peo.SetRejectMessage("\nOnly text objects can be selected.");
+                peo.AddAllowedClass(typeof(DBText), false);
+                peo.AddAllowedClass(typeof(MText), false);
+                PromptEntityResult per = ed.GetEntity(peo);
+
+                if (per.Status == PromptStatus.Cancel) break;
+                if (per.Status != PromptStatus.OK) continue;
+
+                using (DocumentLock loc = _doc.LockDocument())
+                using (Transaction tr = _doc.TransactionManager.StartTransaction())
                 {
-                    Entity ent = (Entity)tr.GetObject(id, OpenMode.ForWrite);
-                    if (ent.Layer == CadConstants.BDY_BEARING || ent.Layer == CadConstants.CONNECTION_BEAR)
+                    Entity ent = (Entity)tr.GetObject(per.ObjectId, OpenMode.ForWrite);
+
+                    // Strict Target Validation
+                    bool isBearingLayer = (ent.Layer == CadConstants.BDY_BEARING || ent.Layer == CadConstants.CONNECTION_BEAR);
+                    if (!isBearingLayer)
                     {
-                        string txt = (ent is DBText dbt) ? dbt.TextString : ((MText)ent).Contents;
-                        
-                        if (CadMath.TryParseBearing(txt, out double currentBrg))
-                        {
-                            double newBrg = CadMath.AddSubDms(currentBrg, 180.0, true);
-                            string formatted = CadMath.FormatAsSurveyor(newBrg);
-                            if (ent is DBText d) d.TextString = formatted;
-                            else if (ent is MText m) m.Contents = formatted;
-                            count++;
-                        }
+                        ed.WriteMessage("\n[Error] Please select TEXT on a Bearing layer.");
+                        continue;
+                    }
+
+                    string txt = (ent is DBText dbt) ? dbt.TextString : ((MText)ent).Contents;
+
+                    if (CadMath.TryParseBearing(txt, out double currentVal))
+                    {
+                        double newBrg = CadMath.AddSubDms(currentVal, 180.0, true);
+                        string formatted = CadMath.FormatAsSurveyor(newBrg);
+
+                        if (ent is DBText d) d.TextString = formatted;
+                        else if (ent is MText m) m.Contents = formatted;
+
+                        tr.Commit();
+                        ed.UpdateScreen();
                     }
                 }
-                tr.Commit();
-                ed.UpdateScreen();
-                ed.WriteMessage($"\n[Rotate] Rotated {count} bearing text(s) by 180°.");
             }
         }
-        ReturnToBearing();
+        finally
+        {
+            this.Visibility = System.Windows.Visibility.Visible;
+            this.Activate();
+            ReturnToBearing();
+        }
     }
 
     private void AnnotateSelectedLine()
