@@ -2032,18 +2032,24 @@ public class CadastreWpfWindow : System.Windows.Window
                         continue;
                     }
 
-                    string txt = (ent is DBText dbt) ? dbt.TextString : ((MText)ent).Contents;
+                    string rawTxt = (ent is DBText dbt) ? dbt.TextString : ((MText)ent).Contents;
 
-                    if (CadMath.TryParseBearing(txt, out double currentVal))
+                    // Math Logic (Degree-Only Modification)
+                    var match = System.Text.RegularExpressions.Regex.Match(rawTxt, @"^(\d+)");
+                    if (match.Success)
                     {
-                        double newBrg = CadMath.AddSubDms(currentVal, 180.0, true);
-                        string formatted = CadMath.FormatAsSurveyor(newBrg);
+                        string degStr = match.Groups[1].Value;
+                        if (int.TryParse(degStr, out int oldDeg))
+                        {
+                            int newDeg = (oldDeg + 180) % 360;
+                            string newTxt = newDeg.ToString() + rawTxt.Substring(degStr.Length);
 
-                        if (ent is DBText d) d.TextString = formatted;
-                        else if (ent is MText m) m.Contents = formatted;
+                            if (ent is DBText d) d.TextString = newTxt;
+                            else if (ent is MText m) m.Contents = newTxt;
 
-                        tr.Commit();
-                        ed.UpdateScreen();
+                            tr.Commit();
+                            ed.UpdateScreen();
+                        }
                     }
                 }
             }
