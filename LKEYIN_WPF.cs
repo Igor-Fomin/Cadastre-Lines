@@ -21,6 +21,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using System.Data;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 // AutoCAD Namespaces
 using Autodesk.AutoCAD.Runtime;
@@ -2146,7 +2147,6 @@ public class CadastreWpfWindow : System.Windows.Window
             {
                 Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
                 
-                // Batch Processing: Process only DBText objects on specific layers
                 if (ent is DBText dbt)
                 {
                     bool isBearing = bearingLayers.Contains(ent.Layer);
@@ -2159,23 +2159,22 @@ public class CadastreWpfWindow : System.Windows.Window
 
                     if (isBearing)
                     {
-                        // Bearing Formatting Logic: Regex sequential clean-up
-                        newText = Regex.Replace(newText, @"00""$", "");
-                        newText = Regex.Replace(newText, @"00'$", "");
+                        if (newText.EndsWith("00\""))
+                            newText = newText.Substring(0, newText.Length - 3);
+                        
+                        if (newText.EndsWith("00'"))
+                            newText = newText.Substring(0, newText.Length - 3);
                     }
                     else if (isDistance)
                     {
-                        // Distance Formatting Logic
-                        if (double.TryParse(oldText, out double val))
+                        if (decimal.TryParse(oldText, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val))
                         {
-                            // The "1.0" Exception
-                            if (Math.Abs(val - 1.0) < 0.0000001) 
+                            if (val == 1.0m)
                             {
                                 newText = "1.0";
                             }
-                            else 
+                            else
                             {
-                                // General Rules: Remove trailing zeros and unnecessary decimal points
                                 newText = val.ToString("G29");
                             }
                         }
@@ -2185,7 +2184,6 @@ public class CadastreWpfWindow : System.Windows.Window
                     {
                         ent.UpgradeOpen();
                         
-                        // Preserve Text Position: Record AlignmentPoint before modifying
                         Point3d anchor = dbt.AlignmentPoint;
                         dbt.TextString = newText;
                         dbt.AlignmentPoint = anchor;
@@ -2197,9 +2195,8 @@ public class CadastreWpfWindow : System.Windows.Window
             tr.Commit();
         }
 
-        ed.WriteMessage($"\n[NT Format] Drawing check complete. {updateCount} labels updated.");
+        ed.WriteMessage($"\n[NT Format] Drawing sweep complete. Updated {updateCount} labels.");
         ed.UpdateScreen();
-        ed.Regen();
         ReturnToBearing();
     }
     #endregion
