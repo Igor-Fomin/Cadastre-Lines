@@ -476,7 +476,7 @@ public class CadastreWpfWindow : System.Windows.Window
         {
             Database db = HostApplicationServices.WorkingDatabase;
             AnnotationScale scale = db.Cannoscale;
-            double factor = scale.DrawingUnits / scale.PaperUnits;
+            double factor = (scale.DrawingUnits / scale.PaperUnits) * 1000.0;
 
             if (factor <= 0 || double.IsNaN(factor) || double.IsInfinity(factor))
             {
@@ -662,7 +662,7 @@ public class CadastreWpfWindow : System.Windows.Window
         lblScale.VerticalAlignment = VerticalAlignment.Center;
         lblScale.Margin = new Thickness(0, 0, 5, 0);
         spScale.Children.Add(lblScale);
-        txtScale = new TextBox() { Text = _plotScale.ToString("0"), Width = 50, Height = 25, Background = UITheme.InputBackground, Foreground = Brushes.Cyan, VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center, ToolTip = "Enter target plot scale (e.g., 500 for 1:500) and press ENTER to update drawing." };
+        txtScale = new TextBox() { Text = _plotScale.ToString("G"), Width = 50, Height = 25, Background = UITheme.InputBackground, Foreground = Brushes.Cyan, VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center, ToolTip = "Enter target plot scale (e.g., 500 for 1:500) and press ENTER to update drawing." };
         txtScale.TextChanged += (s, e) => { 
             if (double.TryParse(txtScale.Text, out double val) && val > 0) _plotScale = val; 
             else if (string.IsNullOrWhiteSpace(txtScale.Text)) _plotScale = 1000.0;
@@ -2344,3 +2344,4 @@ public class CommentWpfWindow : System.Windows.Window
     }
 }
 #endregion
+
