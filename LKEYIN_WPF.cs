@@ -1545,11 +1545,7 @@ public class CadastreWpfWindow : System.Windows.Window
         double offsetDist = GetModelSize(1.5);
         Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
 
-        int d = (int)rawBrg; 
-        int m = (int)((rawBrg - d) * 100); 
-        double s = ((rawBrg * 10000) % 100);
-        
-        ids.Add(AddToDb(CreateText($"{d}\u00B0{m:00}'{s:00}\"", brgLayer, mid + (upVec * offsetDist), AttachmentPoint.BottomCenter, tr, btr.Database, brgSettings, textRot), btr, tr));
+        ids.Add(AddToDb(CreateText(CadMath.FormatAsSurveyor(rawBrg), brgLayer, mid + (upVec * offsetDist), AttachmentPoint.BottomCenter, tr, btr.Database, brgSettings, textRot), btr, tr));
         ids.Add(AddToDb(CreateText(dist.ToString("0.000"), distLayer, mid - (upVec * offsetDist), AttachmentPoint.TopCenter, tr, btr.Database, distSettings, textRot), btr, tr));
         
         return ids;
