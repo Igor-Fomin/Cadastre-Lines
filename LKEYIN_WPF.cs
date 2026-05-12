@@ -2129,7 +2129,62 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void ApplyNTStandards()
     {
-        _doc.Editor.WriteMessage("\n[Tools] Formatting logic for this standard will be added soon.");
+        if (!ValidateDocument()) return;
+        var ed = _doc.Editor;
+        int updateCount = 0;
+
+        using (DocumentLock loc = _doc.LockDocument())
+        using (Transaction tr = _doc.TransactionManager.StartTransaction())
+        {
+            BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+            BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+
+            string[] bearingLayers = { CadConstants.BDY_BEARING, CadConstants.CONNECTION_BEAR };
+            string[] distanceLayers = { CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_DIST };
+
+            foreach (ObjectId id in btr)
+            {
+                Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
+                if (!(ent is DBText || ent is MText)) continue;
+
+                string oldText = (ent is DBText dbt) ? dbt.TextString : ((MText)ent).Contents;
+                string newText = oldText;
+
+                // Bearings
+                if (bearingLayers.Contains(ent.Layer))
+                {
+                    // Remove 00" then remove 00'
+                    if (newText.EndsWith("00\"")) newText = newText.Substring(0, newText.Length - 3);
+                    if (newText.EndsWith("00'")) newText = newText.Substring(0, newText.Length - 3);
+                }
+                // Distances
+                else if (distanceLayers.Contains(ent.Layer))
+                {
+                    if (double.TryParse(oldText, out double val))
+                    {
+                        if (val == 1.0) newText = "1.0";
+                        else
+                        {
+                            // Remove trailing zeros and unnecessary decimal point
+                            newText = val.ToString("G29");
+                        }
+                    }
+                }
+
+                if (newText != oldText)
+                {
+                    ent.UpgradeOpen();
+                    if (ent is DBText d) d.TextString = newText;
+                    else if (ent is MText m) m.Contents = newText;
+                    updateCount++;
+                }
+            }
+            tr.Commit();
+        }
+
+        ed.WriteMessage($"\n[NT Format] Checked drawing. Updated {updateCount} labels.");
+        ed.UpdateScreen();
+        ed.Regen();
         ReturnToBearing();
     }
     #endregion
