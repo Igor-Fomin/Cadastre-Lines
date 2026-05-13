@@ -2180,10 +2180,6 @@ public class CadastreWpfWindow : System.Windows.Window
                             finalString = finalString.Replace("'", "%%135")
                                                      .Replace("\"", "%%136");
                         }
-                        else if (isDim)
-                        {
-                            finalString = finalString.Replace(".", "|");
-                        }
 
                         bool stage6Changed = (finalString != formattedText);
                         bool textChanged = (finalString != oldText);
@@ -2281,25 +2277,17 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private string FormatDistanceQLD(string input)
     {
-        Match m = Regex.Match(input, @"^([\d.]+)\s*(.*)$");
+        Match m = Regex.Match(input, @"^([\d.|]+)\s*(.*)$");
         if (m.Success)
         {
             string numPart = m.Groups[1].Value;
             string suffixPart = m.Groups[2].Value;
 
-            if (decimal.TryParse(numPart, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val))
+            string normalizedNumber = numPart.Replace('|', '.');
+
+            if (decimal.TryParse(normalizedNumber, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val))
             {
-                string formattedNum;
-                // Whole number check (e.g. 10.000 or 10)
-                if (val == Math.Truncate(val))
-                {
-                    formattedNum = val.ToString("0.0", CultureInfo.InvariantCulture);
-                }
-                else
-                {
-                    // Remove trailing zeros (e.g. 10.110 -> 10.11)
-                    formattedNum = val.ToString("G29", CultureInfo.InvariantCulture);
-                }
+                string formattedNum = val.ToString("0.0####", CultureInfo.InvariantCulture).Replace('.', '|');
                 return formattedNum + suffixPart;
             }
         }
