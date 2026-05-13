@@ -2133,8 +2133,8 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         if (!ValidateDocument()) return;
         var ed = _doc.Editor;
-        int lineMoveCount = 0;
-        int textMoveCount = 0;
+        int lCount = 0;
+        int tCount = 0;
 
         using (DocumentLock loc = _doc.LockDocument())
         using (Transaction tr = _doc.TransactionManager.StartTransaction())
@@ -2142,20 +2142,17 @@ public class CadastreWpfWindow : System.Windows.Window
             LayerTable lt = (LayerTable)tr.GetObject(_doc.Database.LayerTableId, OpenMode.ForRead);
             LinetypeTable ltt = (LinetypeTable)tr.GetObject(_doc.Database.LinetypeTableId, OpenMode.ForRead);
 
-            // 1. Ensure QLD layers exist with specific properties
-            // Stage 1 Line Layers
+            // 1. Robust Layer Creation (Ensuring QLD layers exist with correct properties)
             EnsureLayer(lt, ltt, "70", 1, tr, "Continuous");    // Red
             EnsureLayer(lt, ltt, "35", 2, tr, "Continuous");    // Yellow
             EnsureLayer(lt, ltt, "TRAV", 4, tr, "TRAV");        // Cyan
             EnsureLayer(lt, ltt, "AABT", 2, tr, "ABT");         // Yellow
-
-            // Stage 2 Text Layers
             EnsureLayer(lt, ltt, "BEAR", 2, tr, "Continuous");  // Yellow
             EnsureLayer(lt, ltt, "DIM", 2, tr, "Continuous");   // Yellow
             EnsureLayer(lt, ltt, "STNO", 2, tr, "Continuous");  // Yellow
             EnsureLayer(lt, ltt, "CORINF", 4, tr, "Continuous"); // Cyan
 
-            // 2. Global Remapping Sweep
+            // 2. Entity Processing Loop (ModelSpace sweep)
             BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
             BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
 
@@ -2180,28 +2177,42 @@ public class CadastreWpfWindow : System.Windows.Window
             foreach (ObjectId id in btr)
             {
                 Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
-                
-                // Stage 1: Line Remapping
-                if (lineMap.TryGetValue(ent.Layer, out string newLineLayer))
+
+                // For Lines (Full namespace used to avoid conflict with System.Windows.Shapes.Line)
+                if (ent is Autodesk.AutoCAD.DatabaseServices.Line ln)
                 {
-                    ent.UpgradeOpen();
-                    ent.Layer = newLineLayer;
-                    lineMoveCount++;
+                    if (lineMap.TryGetValue(ln.Layer, out string newLineLayer))
+                    {
+                        ln.UpgradeOpen();
+                        ln.Layer = newLineLayer;
+                        lCount++;
+                    }
                 }
-                // Stage 2: Text Remapping (DBText only)
-                else if (ent is DBText dbt && textMap.TryGetValue(dbt.Layer, out string newTextLayer))
+                // For Text (DBText only with safe position preservation)
+                else if (ent is DBText dbt)
                 {
-                    Point3d alignPt = dbt.AlignmentPoint;
-                    dbt.UpgradeOpen();
-                    dbt.Layer = newTextLayer;
-                    dbt.AlignmentPoint = alignPt;
-                    textMoveCount++;
+                    if (textMap.TryGetValue(dbt.Layer, out string newTextLayer))
+                    {
+                        // Capture justification and position first
+                        AttachmentPoint justification = dbt.Justify;
+                        Point3d preservedPt = (justification == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
+
+                        dbt.UpgradeOpen();
+                        dbt.Layer = newTextLayer;
+
+                        // Re-apply preserved position based on justification to prevent eNotApplicable
+                        if (justification == AttachmentPoint.BaseLeft)
+                            dbt.Position = preservedPt;
+                        else
+                            dbt.AlignmentPoint = preservedPt;
+
+                        tCount++;
+                    }
                 }
             }
 
             tr.Commit();
-            ed.WriteMessage($"\n[QLD Stage 1] Line layer remapping complete. {lineMoveCount} entities moved.");
-            ed.WriteMessage($"\n[QLD Stage 2] Text layer remapping complete. {textMoveCount} labels moved.");
+            ed.WriteMessage($"\n[QLD] Updated {lCount} lines and {tCount} text objects.");
             ed.UpdateScreen();
         }
         ReturnToBearing();
