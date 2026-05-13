@@ -687,7 +687,7 @@ public class CadastreWpfWindow : System.Windows.Window
             if (e.Key == Key.Enter) {
                 if (double.TryParse(txtScale.Text, out double val) && val > 0) {
                     _plotScale = val;
-                    UpdateAllAnnotationScales();
+                    ScaleAllText();
                     txtBearing.Focus();
                     txtBearing.SelectAll();
                 }
@@ -765,132 +765,68 @@ public class CadastreWpfWindow : System.Windows.Window
         btn.Opacity = isVisible ? 1.0 : 0.3;
     }
 
-    private void UpdateAllAnnotationScales()
+    private void ScaleAllText()
     {
         if (!ValidateDocument()) return;
-        
+        var ed = _doc.Editor;
+        int count = 0;
+
         ExecuteUiAction(() => {
             using (DocumentLock loc = _doc.LockDocument())
             using (Transaction tr = _doc.TransactionManager.StartTransaction())
             {
                 BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                 BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
-                
-                string[] lineLayers = { "BOUNDARY_SUBJECT", "BOUNDARY_ADJOINING", "CONNECTIONS", "BDY_EASEMENT", "ADDITIONAL_1", "ADDITIONAL_2" };
-                string[] textLayers = { CadConstants.BDY_BEARING, CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_BEAR, CadConstants.CONNECTION_DIST, CadConstants.POINT_NUMBER, CadConstants.SYMB_TEXT };
-
-                List<Autodesk.AutoCAD.DatabaseServices.Line> lines = new List<Autodesk.AutoCAD.DatabaseServices.Line>();
-                List<Entity> texts = new List<Entity>();
 
                 foreach (ObjectId id in btr)
                 {
                     Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
-                    if (lineLayers.Contains(ent.Layer) && ent is Autodesk.AutoCAD.DatabaseServices.Line ln) lines.Add(ln);
-                    else if (textLayers.Contains(ent.Layer) && (ent is DBText || ent is MText)) texts.Add(ent);
-                }
-
-                int count = 0;
-
-                foreach (var t in texts)
-                {
-                    t.UpgradeOpen();
-                    
-                    double baseSize = 2.5;
-                    string styleName = "Standard";
-
-                    if (t.Layer == CadConstants.BDY_BEARING) { baseSize = 3.0; styleName = "STENDOT100"; }
-                    else if (t.Layer == CadConstants.BDY_DISTANCE) { baseSize = 3.0; styleName = "STENDOT100S"; }
-                    else if (t.Layer == CadConstants.CONNECTION_BEAR || t.Layer == CadConstants.CONNECTION_DIST) { baseSize = 2.5; styleName = "STENDOT80"; }
-                    else if (t.Layer == CadConstants.POINT_NUMBER) { baseSize = 2.5; styleName = "ROMANS80"; }
-                    else if (t.Layer == CadConstants.SYMB_TEXT) { baseSize = 2.5; styleName = "ROMANS80"; }
-
-                    double finalHeight = GetModelSize(baseSize);
-
-                    bool isMovable = (t.Layer == CadConstants.BDY_BEARING || t.Layer == CadConstants.CONNECTION_BEAR || 
-                                      t.Layer == CadConstants.BDY_DISTANCE || t.Layer == CadConstants.CONNECTION_DIST);
-
-                    double textRot = 0.0;
-                    Point3d tPos = Point3d.Origin;
-
-                    if (t is DBText dbt)
+                    if (ent is DBText dbt)
                     {
-                        dbt.Height = finalHeight;
-                        dbt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
-                        dbt.ColorIndex = 256; 
-                        if (styleName == "STENDOT100S") dbt.Oblique = 23.0 * (Math.PI / 180.0);
-                        else dbt.Oblique = 0.0;
-                        textRot = dbt.Rotation;
-                        tPos = (dbt.Justify == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
-                    }
-                    else if (t is MText mt)
-                    {
-                        mt.TextHeight = finalHeight;
-                        mt.TextStyleId = GetTextStyleId(tr, styleName, _doc.Database);
-                        mt.ColorIndex = 256; 
-                        textRot = mt.Rotation;
-                        tPos = mt.Location;
-                    }
+                        double paperSize = 0;
+                        string layer = dbt.Layer;
 
-                    if (isMovable)
-                    {
-                        Autodesk.AutoCAD.DatabaseServices.Line closestLine = null;
-                        double minDistance = double.MaxValue;
-                        double tolerance = 0.02;
+                        // Bearing Group
+                        if (layer == CadConstants.BDY_BEARING || layer == CadConstants.CONNECTION_BEAR || layer.Equals("BEAR", StringComparison.OrdinalIgnoreCase))
+                            paperSize = 2.0;
+                        // Distance Group
+                        else if (layer == CadConstants.BDY_DISTANCE || layer == CadConstants.CONNECTION_DIST || layer.Equals("DIM", StringComparison.OrdinalIgnoreCase))
+                            paperSize = 2.0;
+                        // Point Number Group
+                        else if (layer == CadConstants.POINT_NUMBER || layer.Equals("STNO", StringComparison.OrdinalIgnoreCase))
+                            paperSize = 1.8;
+                        // Info/Symbol Group
+                        else if (layer == CadConstants.SYMB_TEXT || layer.Equals("CORINF", StringComparison.OrdinalIgnoreCase))
+                            paperSize = 1.6;
 
-                        foreach (var ln in lines)
+                        if (paperSize > 0)
                         {
-                            double angle = ln.Angle;
-                            
-                            double diff1 = Math.Abs(angle - textRot) % (Math.PI * 2);
-                            double diff2 = Math.Abs(angle + Math.PI - textRot) % (Math.PI * 2);
-                            diff1 = Math.Min(diff1, Math.PI * 2 - diff1);
-                            diff2 = Math.Min(diff2, Math.PI * 2 - diff2);
-
-                            if (diff1 <= tolerance || diff2 <= tolerance)
+                            double targetHeight = GetModelSize(paperSize);
+                            if (Math.Abs(dbt.Height - targetHeight) > 0.0001)
                             {
-                                Point3d midLn = ln.StartPoint + (ln.EndPoint - ln.StartPoint) / 2.0;
-                                double dist = tPos.DistanceTo(midLn);
-                                if (dist < minDistance)
-                                {
-                                    minDistance = dist;
-                                    closestLine = ln;
-                                }
-                            }
-                        }
+                                // Preserve Position: Capture justification and current location
+                                AttachmentPoint justification = dbt.Justify;
+                                Point3d preservedPt = (justification == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
 
-                        if (closestLine != null)
-                        {
-                            Point3d mid = closestLine.StartPoint + (closestLine.EndPoint - closestLine.StartPoint) / 2.0;
-                            Vector3d lineDir = (closestLine.EndPoint - closestLine.StartPoint).GetNormal();
-                            Vector3d perpVec = new Vector3d(-lineDir.Y, lineDir.X, 0);
+                                dbt.UpgradeOpen();
+                                dbt.Height = targetHeight;
 
-                            if ((tPos - mid).DotProduct(perpVec) < 0) perpVec = -perpVec;
-
-                            Point3d newPos = mid + (perpVec * GetModelSize(1.5));
-
-                            if (t is DBText dbtMove)
-                            {
-                                if (dbtMove.Justify == AttachmentPoint.BaseLeft)
-                                {
-                                    dbtMove.Position = newPos;
-                                }
+                                // Re-apply original coordinates to lock position
+                                if (justification == AttachmentPoint.BaseLeft)
+                                    dbt.Position = preservedPt;
                                 else
-                                {
-                                    dbtMove.AlignmentPoint = newPos;
-                                }
-                            }
-                            else if (t is MText mtMove)
-                            {
-                                mtMove.Location = newPos;
+                                    dbt.AlignmentPoint = preservedPt;
+
+                                count++;
                             }
                         }
                     }
-                    count++;
                 }
 
                 tr.Commit();
-                _doc.Editor.Regen();
-                _doc.Editor.WriteMessage($"\n[Refresh] Updated {count} entities to 1:{_plotScale}.");
+                ed.WriteMessage($"\n[Scale] Global scaling complete. {count} labels resized to match 1:{_plotScale}.");
+                ed.UpdateScreen();
+                ed.Regen();
             }
         });
     }
