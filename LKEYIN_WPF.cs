@@ -2133,7 +2133,8 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         if (!ValidateDocument()) return;
         var ed = _doc.Editor;
-        int moveCount = 0;
+        int lineMoveCount = 0;
+        int textMoveCount = 0;
 
         using (DocumentLock loc = _doc.LockDocument())
         using (Transaction tr = _doc.TransactionManager.StartTransaction())
@@ -2142,16 +2143,23 @@ public class CadastreWpfWindow : System.Windows.Window
             LinetypeTable ltt = (LinetypeTable)tr.GetObject(_doc.Database.LinetypeTableId, OpenMode.ForRead);
 
             // 1. Ensure QLD layers exist with specific properties
+            // Stage 1 Line Layers
             EnsureLayer(lt, ltt, "70", 1, tr, "Continuous");    // Red
             EnsureLayer(lt, ltt, "35", 2, tr, "Continuous");    // Yellow
             EnsureLayer(lt, ltt, "TRAV", 4, tr, "TRAV");        // Cyan
             EnsureLayer(lt, ltt, "AABT", 2, tr, "ABT");         // Yellow
 
+            // Stage 2 Text Layers
+            EnsureLayer(lt, ltt, "BEAR", 2, tr, "Continuous");  // Yellow
+            EnsureLayer(lt, ltt, "DIM", 2, tr, "Continuous");   // Yellow
+            EnsureLayer(lt, ltt, "STNO", 2, tr, "Continuous");  // Yellow
+            EnsureLayer(lt, ltt, "CORINF", 4, tr, "Continuous"); // Cyan
+
             // 2. Global Remapping Sweep
             BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
             BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
 
-            var layerMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var lineMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 { "BOUNDARY_SUBJECT", "70" },
                 { "BOUNDARY_ADJOINING", "35" },
@@ -2159,19 +2167,41 @@ public class CadastreWpfWindow : System.Windows.Window
                 { "BDY_EASEMENT", "AABT" }
             };
 
+            var textMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { CadConstants.BDY_BEARING, "BEAR" },
+                { CadConstants.CONNECTION_BEAR, "BEAR" },
+                { CadConstants.BDY_DISTANCE, "DIM" },
+                { CadConstants.CONNECTION_DIST, "DIM" },
+                { CadConstants.POINT_NUMBER, "STNO" },
+                { CadConstants.SYMB_TEXT, "CORINF" }
+            };
+
             foreach (ObjectId id in btr)
             {
                 Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
-                if (layerMap.TryGetValue(ent.Layer, out string newLayer))
+                
+                // Stage 1: Line Remapping
+                if (lineMap.TryGetValue(ent.Layer, out string newLineLayer))
                 {
                     ent.UpgradeOpen();
-                    ent.Layer = newLayer;
-                    moveCount++;
+                    ent.Layer = newLineLayer;
+                    lineMoveCount++;
+                }
+                // Stage 2: Text Remapping (DBText only)
+                else if (ent is DBText dbt && textMap.TryGetValue(dbt.Layer, out string newTextLayer))
+                {
+                    Point3d alignPt = dbt.AlignmentPoint;
+                    dbt.UpgradeOpen();
+                    dbt.Layer = newTextLayer;
+                    dbt.AlignmentPoint = alignPt;
+                    textMoveCount++;
                 }
             }
 
             tr.Commit();
-            ed.WriteMessage($"\n[QLD Stage 1] Line layer remapping complete. {moveCount} entities moved.");
+            ed.WriteMessage($"\n[QLD Stage 1] Line layer remapping complete. {lineMoveCount} entities moved.");
+            ed.WriteMessage($"\n[QLD Stage 2] Text layer remapping complete. {textMoveCount} labels moved.");
             ed.UpdateScreen();
         }
         ReturnToBearing();
