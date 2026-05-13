@@ -450,6 +450,7 @@ public class CadastreWpfWindow : System.Windows.Window
     private string _currentLayer = "BOUNDARY_SUBJECT";
     private bool _isBusy = false;
     private double _plotScale = 1000.0;
+    private double _prevPlotScale;
     private double GetModelSize(double paperSize) => paperSize * (_plotScale / 1000.0);
 
     // Controls
@@ -491,11 +492,13 @@ public class CadastreWpfWindow : System.Windows.Window
             {
                 _plotScale = factor;
             }
+            _prevPlotScale = _plotScale;
             _doc.Editor.WriteMessage($"\nDEBUG: Detected Annotation Scale is 1:{_plotScale}");
         }
         catch
         {
             _plotScale = 1000.0;
+            _prevPlotScale = 1000.0;
         }
         InitializeCustomUI();
         InitializeProjectLayers();
@@ -771,6 +774,9 @@ public class CadastreWpfWindow : System.Windows.Window
         var ed = _doc.Editor;
         int count = 0;
 
+        double scaleDiffFactor = (_plotScale - _prevPlotScale) / 1000.0;
+        double moveDist = 1.5 * scaleDiffFactor;
+
         ExecuteUiAction(() => {
             using (DocumentLock loc = _doc.LockDocument())
             using (Transaction tr = _doc.TransactionManager.StartTransaction())
@@ -783,50 +789,60 @@ public class CadastreWpfWindow : System.Windows.Window
                     Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
                     if (ent is DBText dbt)
                     {
-                        double paperSize = 0;
                         string layer = dbt.Layer;
-
-                        // Bearing Group
-                        if (layer == CadConstants.BDY_BEARING || layer == CadConstants.CONNECTION_BEAR || layer.Equals("BEAR", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 2.0;
-                        // Distance Group
-                        else if (layer == CadConstants.BDY_DISTANCE || layer == CadConstants.CONNECTION_DIST || layer.Equals("DIM", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 2.0;
-                        // Point Number Group
-                        else if (layer == CadConstants.POINT_NUMBER || layer.Equals("STNO", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 1.8;
-                        // Info/Symbol Group
-                        else if (layer == CadConstants.SYMB_TEXT || layer.Equals("CORINF", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 1.6;
+                        bool isBearing = layer == CadConstants.BDY_BEARING || layer == CadConstants.CONNECTION_BEAR || layer.Equals("BEAR", StringComparison.OrdinalIgnoreCase);
+                        bool isDistance = layer == CadConstants.BDY_DISTANCE || layer == CadConstants.CONNECTION_DIST || layer.Equals("DIM", StringComparison.OrdinalIgnoreCase);
+                        
+                        double paperSize = 0;
+                        if (isBearing) paperSize = 2.0;
+                        else if (isDistance) paperSize = 2.0;
+                        else if (layer == CadConstants.POINT_NUMBER || layer.Equals("STNO", StringComparison.OrdinalIgnoreCase)) paperSize = 1.8;
+                        else if (layer == CadConstants.SYMB_TEXT || layer.Equals("CORINF", StringComparison.OrdinalIgnoreCase)) paperSize = 1.6;
 
                         if (paperSize > 0)
                         {
-                            double targetHeight = GetModelSize(paperSize);
-                            if (Math.Abs(dbt.Height - targetHeight) > 0.0001)
+                            dbt.UpgradeOpen();
+
+                            // Calculate movement if it's bearing or distance layer
+                            if (isBearing || isDistance)
                             {
-                                // Preserve Position: Capture justification and current location
-                                AttachmentPoint justification = dbt.Justify;
-                                Point3d preservedPt = (justification == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
+                                double dir = 0;
+                                bool shouldMove = false;
 
-                                dbt.UpgradeOpen();
-                                dbt.Height = targetHeight;
+                                if (dbt.Justify == AttachmentPoint.BottomCenter)
+                                {
+                                    dir = dbt.Rotation - (Math.PI / 2.0);
+                                    shouldMove = true;
+                                }
+                                else if (dbt.Justify == AttachmentPoint.TopCenter)
+                                {
+                                    dir = dbt.Rotation + (Math.PI / 2.0);
+                                    shouldMove = true;
+                                }
 
-                                // Re-apply original coordinates to lock position
-                                if (justification == AttachmentPoint.BaseLeft)
-                                    dbt.Position = preservedPt;
-                                else
-                                    dbt.AlignmentPoint = preservedPt;
-
-                                count++;
+                                if (shouldMove)
+                                {
+                                    Vector3d displacement = new Vector3d(Math.Cos(dir) * moveDist, Math.Sin(dir) * moveDist, 0);
+                                    dbt.AlignmentPoint += displacement;
+                                }
                             }
+
+                            dbt.Height = GetModelSize(paperSize);
+                            count++;
                         }
                     }
                 }
 
+                _prevPlotScale = _plotScale;
                 tr.Commit();
-                ed.WriteMessage($"\n[Scale] Global scaling complete. {count} labels resized to match 1:{_plotScale}.");
+                ed.WriteMessage($"\n[Scale] Global scaling complete. {count} labels updated for 1:{_plotScale}.");
                 ed.UpdateScreen();
                 ed.Regen();
+                
+                if (txtBearing != null) {
+                    txtBearing.Focus();
+                    txtBearing.SelectAll();
+                }
             }
         });
     }
