@@ -1569,6 +1569,20 @@ public class CadastreWpfWindow : System.Windows.Window
 
         return tstr.ObjectId;
     }
+
+    private ObjectId EnsureTextStyle(Transaction tr, string styleName, Database db)
+    {
+        TextStyleTable tst = (TextStyleTable)tr.GetObject(db.TextStyleTableId, OpenMode.ForRead);
+        if (tst.Has(styleName)) return tst[styleName];
+
+        tst.UpgradeOpen();
+        TextStyleTableRecord tstr = new TextStyleTableRecord();
+        tstr.Name = styleName;
+        tstr.FileName = "romans.shx";
+        tst.Add(tstr);
+        tr.AddNewlyCreatedDBObject(tstr, true);
+        return tstr.ObjectId;
+    }
     #endregion
 
     #region Helper UI Methods
@@ -2073,6 +2087,7 @@ public class CadastreWpfWindow : System.Windows.Window
         int tCount = 0;
         int s3Count = 0;
         int s4Count = 0;
+        int s5Count = 0;
 
         using (DocumentLock loc = _doc.LockDocument())
         using (Transaction tr = _doc.TransactionManager.StartTransaction())
@@ -2089,6 +2104,10 @@ public class CadastreWpfWindow : System.Windows.Window
             EnsureLayer(lt, ltt, "DIM", 2, tr, "Continuous");   // Yellow
             EnsureLayer(lt, ltt, "STNO", 2, tr, "Continuous");  // Yellow
             EnsureLayer(lt, ltt, "CORINF", 4, tr, "Continuous"); // Cyan
+
+            // 1.5 Ensure QLD Text Styles Exist (Stage 5)
+            ObjectId styleSU = EnsureTextStyle(tr, "SU", _doc.Database);
+            ObjectId styleSS = EnsureTextStyle(tr, "SS", _doc.Database);
 
             // 2. Entity Processing Loop (ModelSpace sweep)
             BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
@@ -2126,7 +2145,7 @@ public class CadastreWpfWindow : System.Windows.Window
                         lCount++;
                     }
                 }
-                // For Text (DBText only with safe position preservation and Stage 3/4 processing)
+                // For Text (DBText only with safe position preservation and Stage 3/4/5 processing)
                 else if (ent is DBText dbt)
                 {
                     bool moved = textMap.TryGetValue(dbt.Layer, out string newTextLayer);
@@ -2157,7 +2176,25 @@ public class CadastreWpfWindow : System.Windows.Window
                         bool heightChanged = (baseSize > 0 && Math.Abs(dbt.Height - targetHeight) > 0.0001);
                         bool textChanged = (formattedText != oldText);
 
-                        if (moved || textChanged || heightChanged)
+                        // Stage 5: Style & Obliquing logic
+                        ObjectId targetStyle = ObjectId.Null;
+                        double targetOblique = 0.0;
+
+                        if (isBear || isStno)
+                        {
+                            targetStyle = styleSU;
+                            targetOblique = 0.0;
+                        }
+                        else if (isDim || isCorinf)
+                        {
+                            targetStyle = styleSS;
+                            targetOblique = 20.0 * (Math.PI / 180.0); // 20 degrees
+                        }
+
+                        bool styleChanged = (targetStyle != ObjectId.Null && dbt.TextStyleId != targetStyle);
+                        bool obliqueChanged = (targetStyle != ObjectId.Null && Math.Abs(dbt.Oblique - targetOblique) > 0.0001);
+
+                        if (moved || textChanged || heightChanged || styleChanged || obliqueChanged)
                         {
                             // Capture justification and position first to ensure stability
                             AttachmentPoint justification = dbt.Justify;
@@ -2183,6 +2220,21 @@ public class CadastreWpfWindow : System.Windows.Window
                                 s4Count++;
                             }
 
+                            if (styleChanged)
+                            {
+                                dbt.TextStyleId = targetStyle;
+                            }
+
+                            if (obliqueChanged)
+                            {
+                                dbt.Oblique = targetOblique;
+                            }
+
+                            if (styleChanged || obliqueChanged)
+                            {
+                                s5Count++;
+                            }
+
                             // Re-apply preserved position based on justification to prevent eNotApplicable
                             if (justification == AttachmentPoint.BaseLeft)
                                 dbt.Position = preservedPt;
@@ -2197,6 +2249,7 @@ public class CadastreWpfWindow : System.Windows.Window
             ed.WriteMessage($"\n[QLD] Updated {lCount} lines and {tCount} text objects.");
             ed.WriteMessage($"\n[QLD Stage 3] Truncation complete. {s3Count} labels formatted.");
             ed.WriteMessage($"\n[QLD Stage 4] Scaling complete. {s4Count} labels resized to match 1:{_plotScale}.");
+            ed.WriteMessage($"\n[QLD Stage 5] Styles and Obliquing (20°) applied to {s5Count} labels.");
             ed.UpdateScreen();
         }
         ReturnToBearing();
