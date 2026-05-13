@@ -589,12 +589,12 @@ public class CadastreWpfWindow : System.Windows.Window
                 }
 
                 // Automated Layer Setup for Text Layers
-                EnsureLayer(lt, CadConstants.BDY_DISTANCE, 2, tr); // Yellow
-                EnsureLayer(lt, CadConstants.BDY_BEARING, 2, tr);  // Yellow
-                EnsureLayer(lt, CadConstants.CONNECTION_DIST, 1, tr); // Red
-                EnsureLayer(lt, CadConstants.CONNECTION_BEAR, 1, tr); // Red
-                EnsureLayer(lt, CadConstants.SYMB_TEXT, 1, tr);       // Red
-                EnsureLayer(lt, CadConstants.POINT_NUMBER, 3, tr);    // Green
+                EnsureLayer(lt, ltt, CadConstants.BDY_DISTANCE, 2, tr); // Yellow
+                EnsureLayer(lt, ltt, CadConstants.BDY_BEARING, 2, tr);  // Yellow
+                EnsureLayer(lt, ltt, CadConstants.CONNECTION_DIST, 1, tr); // Red
+                EnsureLayer(lt, ltt, CadConstants.CONNECTION_BEAR, 1, tr); // Red
+                EnsureLayer(lt, ltt, CadConstants.SYMB_TEXT, 1, tr);       // Red
+                EnsureLayer(lt, ltt, CadConstants.POINT_NUMBER, 3, tr);    // Green
 
                 // Style Availability Check
                 string[] mandatoryStyles = { "STENDOT100", "STENDOT100S", "STENDOT80", "ROMANS80", "ROMAND140" };
@@ -609,7 +609,7 @@ public class CadastreWpfWindow : System.Windows.Window
         }
     }
 
-    private void EnsureLayer(LayerTable lt, string name, short colorIndex, Transaction tr)
+    private void EnsureLayer(LayerTable lt, LinetypeTable ltt, string name, short colorIndex, Transaction tr, string linetype = "Continuous")
     {
         if (!lt.Has(name))
         {
@@ -617,6 +617,17 @@ public class CadastreWpfWindow : System.Windows.Window
             LayerTableRecord ltr = new LayerTableRecord();
             ltr.Name = name;
             ltr.Color = AcColor.FromColorIndex(Autodesk.AutoCAD.Colors.ColorMethod.ByAci, colorIndex);
+
+            if (ltt.Has(linetype))
+            {
+                ltr.LinetypeObjectId = ltt[linetype];
+            }
+            else if (linetype != "Continuous")
+            {
+                _doc.Editor.WriteMessage($"\n[Warning] Linetype '{linetype}' not found. Defaulting to Continuous for layer '{name}'.");
+                ltr.LinetypeObjectId = ltt["Continuous"];
+            }
+
             lt.Add(ltr);
             tr.AddNewlyCreatedDBObject(ltr, true);
         }
@@ -2120,7 +2131,49 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void ApplyQLDStandards()
     {
-        _doc.Editor.WriteMessage("\n[Tools] Formatting logic for this standard will be added soon.");
+        if (!ValidateDocument()) return;
+        var ed = _doc.Editor;
+        int moveCount = 0;
+
+        using (DocumentLock loc = _doc.LockDocument())
+        using (Transaction tr = _doc.TransactionManager.StartTransaction())
+        {
+            LayerTable lt = (LayerTable)tr.GetObject(_doc.Database.LayerTableId, OpenMode.ForRead);
+            LinetypeTable ltt = (LinetypeTable)tr.GetObject(_doc.Database.LinetypeTableId, OpenMode.ForRead);
+
+            // 1. Ensure QLD layers exist with specific properties
+            EnsureLayer(lt, ltt, "70", 1, tr, "Continuous");    // Red
+            EnsureLayer(lt, ltt, "35", 2, tr, "Continuous");    // Yellow
+            EnsureLayer(lt, ltt, "TRAV", 4, tr, "TRAV");        // Cyan
+            EnsureLayer(lt, ltt, "AABT", 2, tr, "ABT");         // Yellow
+
+            // 2. Global Remapping Sweep
+            BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
+            BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+
+            var layerMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "BOUNDARY_SUBJECT", "70" },
+                { "BOUNDARY_ADJOINING", "35" },
+                { "CONNECTIONS", "TRAV" },
+                { "BDY_EASEMENT", "AABT" }
+            };
+
+            foreach (ObjectId id in btr)
+            {
+                Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
+                if (layerMap.TryGetValue(ent.Layer, out string newLayer))
+                {
+                    ent.UpgradeOpen();
+                    ent.Layer = newLayer;
+                    moveCount++;
+                }
+            }
+
+            tr.Commit();
+            ed.WriteMessage($"\n[QLD Stage 1] Line layer remapping complete. {moveCount} entities moved.");
+            ed.UpdateScreen();
+        }
         ReturnToBearing();
     }
 
