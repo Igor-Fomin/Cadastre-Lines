@@ -449,7 +449,9 @@ public class CadastreWpfWindow : System.Windows.Window
     private AppSettings _config;
     private string _currentLayer = "BOUNDARY_SUBJECT";
     private bool _isBusy = false;
+    private bool _isSyncingScale = false;
     private double _plotScale = 1000.0;
+    private double _prevPlotScale;
     private double GetModelSize(double paperSize) => paperSize * (_plotScale / 1000.0);
 
     // Controls
@@ -479,23 +481,16 @@ public class CadastreWpfWindow : System.Windows.Window
 
         try
         {
-            Database db = HostApplicationServices.WorkingDatabase;
+            Database db = _doc.Database;
             AnnotationScale scale = db.Cannoscale;
-            double factor = (scale.DrawingUnits / scale.PaperUnits) * 1000.0;
-
-            if (factor <= 0 || double.IsNaN(factor) || double.IsInfinity(factor))
-            {
-                _plotScale = 1000.0;
-            }
-            else
-            {
-                _plotScale = factor;
-            }
+            _plotScale = scale.DrawingUnits / scale.PaperUnits;
+            _prevPlotScale = _plotScale;
             _doc.Editor.WriteMessage($"\nDEBUG: Detected Annotation Scale is 1:{_plotScale}");
         }
         catch
         {
             _plotScale = 1000.0;
+            _prevPlotScale = 1000.0;
         }
         InitializeCustomUI();
         InitializeProjectLayers();
@@ -505,11 +500,70 @@ public class CadastreWpfWindow : System.Windows.Window
         _currentLayer = LayerConfig[Key.W].Name;
         HighlightActiveLayer(btnW);
 
+        _doc.Database.SystemVariableChanged += Database_SystemVariableChanged;
         this.Closed += CadastreWpfWindow_Closed;
+    }
+
+    private void Database_SystemVariableChanged(object sender, Autodesk.AutoCAD.DatabaseServices.SystemVariableChangedEventArgs e)
+    {
+        if (e.Name == "CANNOSCALE" && !_isSyncingScale)
+        {
+            try
+            {
+                Database db = _doc.Database;
+                AnnotationScale scale = db.Cannoscale;
+                double newScale = scale.DrawingUnits / scale.PaperUnits;
+                
+                if (Math.Abs(_plotScale - newScale) > 1e-6)
+                {
+                    _plotScale = newScale;
+                    this.Dispatcher.BeginInvoke(new Action(() => {
+                        if (txtScale != null) txtScale.Text = _plotScale.ToString("G");
+                        ScaleAllText();
+                    }));
+                }
+            }
+            catch { }
+        }
+    }
+
+    private void SetCadAnnotativeScale(double targetScale)
+    {
+        ExecuteUiAction(() => {
+            _isSyncingScale = true;
+            try
+            {
+                using (DocumentLock loc = _doc.LockDocument())
+                using (Transaction tr = _doc.TransactionManager.StartTransaction())
+                {
+                    Database db = _doc.Database;
+                    ObjectContextManager manager = db.ObjectContextManager;
+                    ObjectContextCollection collection = manager.GetContextCollection("ACDB_ANNOTATIONSCALES");
+
+                    string scaleName = $"1:{targetScale}";
+                    ObjectContext foundContext = collection.GetContext(scaleName);
+
+                    if (foundContext != null)
+                    {
+                        db.Cannoscale = (AnnotationScale)foundContext;
+                        tr.Commit();
+                    }
+                    else
+                    {
+                        _doc.Editor.WriteMessage($"\n[Warning] Scale '{scaleName}' not found in drawing scale list.");
+                    }
+                }
+            }
+            finally
+            {
+                _isSyncingScale = false;
+            }
+        });
     }
 
     private void CadastreWpfWindow_Closed(object? sender, EventArgs e)
     {
+        _doc.Database.SystemVariableChanged -= Database_SystemVariableChanged;
     }
     #endregion
 
@@ -686,10 +740,17 @@ public class CadastreWpfWindow : System.Windows.Window
         txtScale.KeyDown += (s, e) => {
             if (e.Key == Key.Enter) {
                 if (double.TryParse(txtScale.Text, out double val) && val > 0) {
-                    _plotScale = val;
-                    ScaleAllText();
-                    txtBearing.Focus();
-                    txtBearing.SelectAll();
+                    _isSyncingScale = true;
+                    try {
+                        _plotScale = val;
+                        SetCadAnnotativeScale(val);
+                        ScaleAllText();
+                        _doc.Editor.Regen();
+                        txtBearing.Focus();
+                        txtBearing.SelectAll();
+                    } finally {
+                        _isSyncingScale = false;
+                    }
                 }
             }
         };
@@ -778,55 +839,80 @@ public class CadastreWpfWindow : System.Windows.Window
                 BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                 BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
 
+                string[] targetLayers = { 
+                    CadConstants.BDY_BEARING, CadConstants.BDY_DISTANCE, 
+                    CadConstants.CONNECTION_BEAR, CadConstants.CONNECTION_DIST, 
+                    "BEAR", "DIM" 
+                };
+
                 foreach (ObjectId id in btr)
                 {
                     Entity ent = (Entity)tr.GetObject(id, OpenMode.ForRead);
                     if (ent is DBText dbt)
                     {
-                        double paperSize = 0;
                         string layer = dbt.Layer;
-
-                        // Bearing Group
-                        if (layer == CadConstants.BDY_BEARING || layer == CadConstants.CONNECTION_BEAR || layer.Equals("BEAR", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 2.0;
-                        // Distance Group
-                        else if (layer == CadConstants.BDY_DISTANCE || layer == CadConstants.CONNECTION_DIST || layer.Equals("DIM", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 2.0;
-                        // Point Number Group
-                        else if (layer == CadConstants.POINT_NUMBER || layer.Equals("STNO", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 1.8;
-                        // Info/Symbol Group
-                        else if (layer == CadConstants.SYMB_TEXT || layer.Equals("CORINF", StringComparison.OrdinalIgnoreCase))
-                            paperSize = 1.6;
-
-                        if (paperSize > 0)
+                        bool isTargetLayer = targetLayers.Any(l => string.Equals(l, layer, StringComparison.OrdinalIgnoreCase));
+                        
+                        // We only move text on specific layers with specific justifications
+                        if (isTargetLayer && (dbt.Justify == AttachmentPoint.BottomCenter || dbt.Justify == AttachmentPoint.TopCenter))
                         {
-                            double targetHeight = GetModelSize(paperSize);
-                            if (Math.Abs(dbt.Height - targetHeight) > 0.0001)
+                            try
                             {
-                                // Preserve Position: Capture justification and current location
-                                AttachmentPoint justification = dbt.Justify;
-                                Point3d preservedPt = (justification == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
-
                                 dbt.UpgradeOpen();
-                                dbt.Height = targetHeight;
 
-                                // Re-apply original coordinates to lock position
-                                if (justification == AttachmentPoint.BaseLeft)
-                                    dbt.Position = preservedPt;
-                                else
-                                    dbt.AlignmentPoint = preservedPt;
+                                // Calculate Absolute Movement
+                                double basePaperSize = 2.0; // Bearing/Distance labels use 2.0
+                                double currentLabelScale = (dbt.Height / basePaperSize) * 1000.0;
+                                double moveDist = (_plotScale - currentLabelScale) * (1.5 / 1000.0);
 
+                                if (Math.Abs(moveDist) > 1e-6)
+                                {
+                                    double dir = 0;
+                                    if (dbt.Justify == AttachmentPoint.BottomCenter)
+                                    {
+                                        dir = dbt.Rotation + (Math.PI / 2.0); // Moves away from line
+                                    }
+                                    else if (dbt.Justify == AttachmentPoint.TopCenter)
+                                    {
+                                        dir = dbt.Rotation - (Math.PI / 2.0); // Moves away from line
+                                    }
+
+                                    Vector3d moveVec = new Vector3d(Math.Cos(dir) * moveDist, Math.Sin(dir) * moveDist, 0);
+                                    dbt.AlignmentPoint += moveVec;
+                                }
+
+                                dbt.Height = GetModelSize(basePaperSize);
+                                count++;
+                            }
+                            catch { }
+                        }
+                        else 
+                        {
+                            // For other layers like Point Number or Comment, just update height if applicable
+                            double paperSize = 0;
+                            if (layer == CadConstants.POINT_NUMBER || layer.Equals("STNO", StringComparison.OrdinalIgnoreCase)) paperSize = 1.8;
+                            else if (layer == CadConstants.SYMB_TEXT || layer.Equals("CORINF", StringComparison.OrdinalIgnoreCase)) paperSize = 1.6;
+
+                            if (paperSize > 0)
+                            {
+                                dbt.UpgradeOpen();
+                                dbt.Height = GetModelSize(paperSize);
                                 count++;
                             }
                         }
                     }
                 }
 
+                _prevPlotScale = _plotScale;
                 tr.Commit();
-                ed.WriteMessage($"\n[Scale] Global scaling complete. {count} labels resized to match 1:{_plotScale}.");
+                ed.WriteMessage($"\n[Scale] Global scaling complete (Sync). {count} labels updated for 1:{_plotScale}.");
                 ed.UpdateScreen();
                 ed.Regen();
+                
+                if (txtBearing != null) {
+                    txtBearing.Focus();
+                    txtBearing.SelectAll();
+                }
             }
         });
     }
