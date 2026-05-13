@@ -2136,6 +2136,7 @@ public class CadastreWpfWindow : System.Windows.Window
         int lCount = 0;
         int tCount = 0;
         int s3Count = 0;
+        int s4Count = 0;
 
         using (DocumentLock loc = _doc.LockDocument())
         using (Transaction tr = _doc.TransactionManager.StartTransaction())
@@ -2189,7 +2190,7 @@ public class CadastreWpfWindow : System.Windows.Window
                         lCount++;
                     }
                 }
-                // For Text (DBText only with safe position preservation and Stage 3 truncation)
+                // For Text (DBText only with safe position preservation and Stage 3/4 processing)
                 else if (ent is DBText dbt)
                 {
                     bool moved = textMap.TryGetValue(dbt.Layer, out string newTextLayer);
@@ -2197,18 +2198,30 @@ public class CadastreWpfWindow : System.Windows.Window
 
                     bool isBear = string.Equals(targetLayer, "BEAR", StringComparison.OrdinalIgnoreCase);
                     bool isDim = string.Equals(targetLayer, "DIM", StringComparison.OrdinalIgnoreCase);
+                    bool isStno = string.Equals(targetLayer, "STNO", StringComparison.OrdinalIgnoreCase);
+                    bool isCorinf = string.Equals(targetLayer, "CORINF", StringComparison.OrdinalIgnoreCase);
 
-                    if (moved || isBear || isDim)
+                    if (moved || isBear || isDim || isStno || isCorinf)
                     {
                         string oldText = dbt.TextString;
                         string formattedText = oldText;
 
+                        // Stage 3: Truncation logic
                         if (isBear) formattedText = FormatBearingNT(oldText);
                         else if (isDim) formattedText = FormatDistanceQLD(oldText);
 
+                        // Stage 4: Scaling logic
+                        double baseSize = 0;
+                        if (isBear) baseSize = 2.0;
+                        else if (isDim) baseSize = 2.0;
+                        else if (isStno) baseSize = 1.8;
+                        else if (isCorinf) baseSize = 1.6;
+
+                        double targetHeight = GetModelSize(baseSize);
+                        bool heightChanged = (baseSize > 0 && Math.Abs(dbt.Height - targetHeight) > 0.0001);
                         bool textChanged = (formattedText != oldText);
 
-                        if (moved || textChanged)
+                        if (moved || textChanged || heightChanged)
                         {
                             // Capture justification and position first to ensure stability
                             AttachmentPoint justification = dbt.Justify;
@@ -2228,6 +2241,12 @@ public class CadastreWpfWindow : System.Windows.Window
                                 s3Count++;
                             }
 
+                            if (heightChanged)
+                            {
+                                dbt.Height = targetHeight;
+                                s4Count++;
+                            }
+
                             // Re-apply preserved position based on justification to prevent eNotApplicable
                             if (justification == AttachmentPoint.BaseLeft)
                                 dbt.Position = preservedPt;
@@ -2241,6 +2260,7 @@ public class CadastreWpfWindow : System.Windows.Window
             tr.Commit();
             ed.WriteMessage($"\n[QLD] Updated {lCount} lines and {tCount} text objects.");
             ed.WriteMessage($"\n[QLD Stage 3] Truncation complete. {s3Count} labels formatted.");
+            ed.WriteMessage($"\n[QLD Stage 4] Scaling complete. {s4Count} labels resized to match 1:{_plotScale}.");
             ed.UpdateScreen();
         }
         ReturnToBearing();
