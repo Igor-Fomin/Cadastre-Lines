@@ -2088,6 +2088,7 @@ public class CadastreWpfWindow : System.Windows.Window
         int s3Count = 0;
         int s4Count = 0;
         int s5Count = 0;
+        int s6Count = 0;
 
         using (DocumentLock loc = _doc.LockDocument())
         using (Transaction tr = _doc.TransactionManager.StartTransaction())
@@ -2145,7 +2146,7 @@ public class CadastreWpfWindow : System.Windows.Window
                         lCount++;
                     }
                 }
-                // For Text (DBText only with safe position preservation and Stage 3/4/5 processing)
+                // For Text (DBText only with safe position preservation and Stage 3/4/5/6 processing)
                 else if (ent is DBText dbt)
                 {
                     bool moved = textMap.TryGetValue(dbt.Layer, out string newTextLayer);
@@ -2165,6 +2166,24 @@ public class CadastreWpfWindow : System.Windows.Window
                         if (isBear) formattedText = FormatBearingNT(oldText);
                         else if (isDim) formattedText = FormatDistanceQLD(oldText);
 
+                        bool stage3Changed = (formattedText != oldText);
+
+                        // Stage 6: Symbol Replacement logic
+                        string finalString = formattedText;
+                        if (isBear)
+                        {
+                            finalString = finalString.Replace("°", "%%d").Replace("d", "%%d")
+                                                     .Replace("'", "%%135")
+                                                     .Replace("\"", "%%136");
+                        }
+                        else if (isDim)
+                        {
+                            finalString = finalString.Replace(".", "|");
+                        }
+
+                        bool stage6Changed = (finalString != formattedText);
+                        bool textChanged = (finalString != oldText);
+
                         // Stage 4: Scaling logic
                         double baseSize = 0;
                         if (isBear) baseSize = 2.0;
@@ -2174,7 +2193,6 @@ public class CadastreWpfWindow : System.Windows.Window
 
                         double targetHeight = GetModelSize(baseSize);
                         bool heightChanged = (baseSize > 0 && Math.Abs(dbt.Height - targetHeight) > 0.0001);
-                        bool textChanged = (formattedText != oldText);
 
                         // Stage 5: Style & Obliquing logic
                         ObjectId targetStyle = ObjectId.Null;
@@ -2210,8 +2228,9 @@ public class CadastreWpfWindow : System.Windows.Window
 
                             if (textChanged)
                             {
-                                dbt.TextString = formattedText;
-                                s3Count++;
+                                dbt.TextString = finalString;
+                                if (stage3Changed) s3Count++;
+                                if (stage6Changed) s6Count++;
                             }
 
                             if (heightChanged)
@@ -2250,6 +2269,7 @@ public class CadastreWpfWindow : System.Windows.Window
             ed.WriteMessage($"\n[QLD Stage 3] Truncation complete. {s3Count} labels formatted.");
             ed.WriteMessage($"\n[QLD Stage 4] Scaling complete. {s4Count} labels resized to match 1:{_plotScale}.");
             ed.WriteMessage($"\n[QLD Stage 5] Styles and Obliquing (20°) applied to {s5Count} labels.");
+            ed.WriteMessage($"\n[QLD Stage 6] Symbol codes and pipe formatting applied to {s6Count} labels.");
             ed.UpdateScreen();
         }
         ReturnToBearing();
