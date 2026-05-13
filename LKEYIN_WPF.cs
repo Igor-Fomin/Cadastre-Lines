@@ -2135,6 +2135,7 @@ public class CadastreWpfWindow : System.Windows.Window
         var ed = _doc.Editor;
         int lCount = 0;
         int tCount = 0;
+        int s3Count = 0;
 
         using (DocumentLock loc = _doc.LockDocument())
         using (Transaction tr = _doc.TransactionManager.StartTransaction())
@@ -2188,34 +2189,88 @@ public class CadastreWpfWindow : System.Windows.Window
                         lCount++;
                     }
                 }
-                // For Text (DBText only with safe position preservation)
+                // For Text (DBText only with safe position preservation and Stage 3 truncation)
                 else if (ent is DBText dbt)
                 {
-                    if (textMap.TryGetValue(dbt.Layer, out string newTextLayer))
+                    bool moved = textMap.TryGetValue(dbt.Layer, out string newTextLayer);
+                    string targetLayer = moved ? newTextLayer : dbt.Layer;
+
+                    bool isBear = string.Equals(targetLayer, "BEAR", StringComparison.OrdinalIgnoreCase);
+                    bool isDim = string.Equals(targetLayer, "DIM", StringComparison.OrdinalIgnoreCase);
+
+                    if (moved || isBear || isDim)
                     {
-                        // Capture justification and position first
-                        AttachmentPoint justification = dbt.Justify;
-                        Point3d preservedPt = (justification == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
+                        string oldText = dbt.TextString;
+                        string formattedText = oldText;
 
-                        dbt.UpgradeOpen();
-                        dbt.Layer = newTextLayer;
+                        if (isBear) formattedText = FormatBearingNT(oldText);
+                        else if (isDim) formattedText = FormatDistanceQLD(oldText);
 
-                        // Re-apply preserved position based on justification to prevent eNotApplicable
-                        if (justification == AttachmentPoint.BaseLeft)
-                            dbt.Position = preservedPt;
-                        else
-                            dbt.AlignmentPoint = preservedPt;
+                        bool textChanged = (formattedText != oldText);
 
-                        tCount++;
+                        if (moved || textChanged)
+                        {
+                            // Capture justification and position first to ensure stability
+                            AttachmentPoint justification = dbt.Justify;
+                            Point3d preservedPt = (justification == AttachmentPoint.BaseLeft) ? dbt.Position : dbt.AlignmentPoint;
+
+                            dbt.UpgradeOpen();
+                            
+                            if (moved)
+                            {
+                                dbt.Layer = targetLayer;
+                                tCount++;
+                            }
+
+                            if (textChanged)
+                            {
+                                dbt.TextString = formattedText;
+                                s3Count++;
+                            }
+
+                            // Re-apply preserved position based on justification to prevent eNotApplicable
+                            if (justification == AttachmentPoint.BaseLeft)
+                                dbt.Position = preservedPt;
+                            else
+                                dbt.AlignmentPoint = preservedPt;
+                        }
                     }
                 }
             }
 
             tr.Commit();
             ed.WriteMessage($"\n[QLD] Updated {lCount} lines and {tCount} text objects.");
+            ed.WriteMessage($"\n[QLD Stage 3] Truncation complete. {s3Count} labels formatted.");
             ed.UpdateScreen();
         }
         ReturnToBearing();
+    }
+
+    private string FormatDistanceQLD(string input)
+    {
+        Match m = Regex.Match(input, @"^([\d.]+)\s*(.*)$");
+        if (m.Success)
+        {
+            string numPart = m.Groups[1].Value;
+            string suffixPart = m.Groups[2].Value;
+
+            if (decimal.TryParse(numPart, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal val))
+            {
+                string formattedNum;
+                // Whole number check (e.g. 10.000 or 10)
+                if (val == Math.Truncate(val))
+                {
+                    formattedNum = val.ToString("0.0", CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    // Remove trailing zeros (e.g. 10.110 -> 10.11)
+                    formattedNum = val.ToString("G29", CultureInfo.InvariantCulture);
+                }
+                return formattedNum + suffixPart;
+            }
+        }
+        return input;
     }
 
     private string RemoveTrailingZerosNT(string input)
