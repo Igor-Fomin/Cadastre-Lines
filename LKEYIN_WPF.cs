@@ -2172,8 +2172,12 @@ public class CadastreWpfWindow : System.Windows.Window
                         string finalString = formattedText;
                         if (isBear)
                         {
-                            finalString = finalString.Replace("°", "%%d").Replace("d", "%%d")
-                                                     .Replace("'", "%%135")
+                            // Replace degree symbols with a placeholder first to avoid 'd' collision
+                            finalString = finalString.Replace("°", "%%d");
+                            // Replace 'd' ONLY if it's not already part of '%%d' (to prevent %%%%d)
+                            finalString = Regex.Replace(finalString, @"(?<!%%)d", "%%d");
+                            
+                            finalString = finalString.Replace("'", "%%135")
                                                      .Replace("\"", "%%136");
                         }
                         else if (isDim)
@@ -2269,7 +2273,7 @@ public class CadastreWpfWindow : System.Windows.Window
             ed.WriteMessage($"\n[QLD Stage 3] Truncation complete. {s3Count} labels formatted.");
             ed.WriteMessage($"\n[QLD Stage 4] Scaling complete. {s4Count} labels resized to match 1:{_plotScale}.");
             ed.WriteMessage($"\n[QLD Stage 5] Styles and Obliquing (20°) applied to {s5Count} labels.");
-            ed.WriteMessage($"\n[QLD Stage 6] Symbol codes and pipe formatting applied to {s6Count} labels.");
+            ed.WriteMessage($"\n[QLD Fix] Symbol codes corrected (%%d used for degrees).");
             ed.UpdateScreen();
         }
         ReturnToBearing();
