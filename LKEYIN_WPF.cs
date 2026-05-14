@@ -47,6 +47,27 @@ public static class CadConstants
     public const string SYMB_TEXT = "SYMB TEXT";
     public const string POINT_NUMBER = "POINT_NUMBER";
     public const string VAR_PT_COUNTER = "CADASTRE_PT_NUM";
+
+    // 1:1000 Reference Heights (Model Space mm)
+    public static readonly Dictionary<string, double> LayerHeights = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+    {
+        { BDY_BEARING, 3.0 },
+        { BDY_DISTANCE, 3.0 },
+        { CONNECTION_BEAR, 2.5 },
+        { CONNECTION_DIST, 2.5 },
+        { POINT_NUMBER, 2.5 },
+        { SYMB_TEXT, 2.5 },
+        { "BEAR", 2.0 },
+        { "DIM", 2.0 },
+        { "STNO", 1.8 },
+        { "CORINF", 1.6 }
+    };
+
+    public static double GetReferenceHeight(string layerName)
+    {
+        if (LayerHeights.TryGetValue(layerName, out double h)) return h;
+        return 2.0; // Default fallback
+    }
 }
 #endregion
 
@@ -482,9 +503,9 @@ public class CadastreWpfWindow : System.Windows.Window
         try
         {
             Database db = _doc.Database;
-            _plotScale = GetScaleFactor(db.Cannoscale);
+            _plotScale = Math.Round(GetScaleFactor(db.Cannoscale)); // Task 5: Rounding Precision
             _prevPlotScale = _plotScale;
-            _doc.Editor.WriteMessage($"\nDEBUG: Detected Annotation Scale is {db.Cannoscale.Name} (Factor: {_plotScale})");
+            _doc.Editor.WriteMessage($"\n[Init] Annotation Scale: {db.Cannoscale.Name} (Factor: {_plotScale})");
         }
         catch
         {
@@ -509,7 +530,7 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         // For Meters drawings, 1:300 is defined as 0.3 DrawingUnits to 1 PaperUnit.
         // Multiplying by 1000.0 yields the intuitive '300' factor used in the UI.
-        return (scale.DrawingUnits / scale.PaperUnits) * 1000.0;
+        return Math.Round((scale.DrawingUnits / scale.PaperUnits) * 1000.0);
     }
 
     private void Database_SystemVariableChanged(object sender, Autodesk.AutoCAD.DatabaseServices.SystemVariableChangedEventArgs e)
@@ -519,13 +540,13 @@ public class CadastreWpfWindow : System.Windows.Window
             try
             {
                 Database db = _doc.Database;
-                double newScale = GetScaleFactor(db.Cannoscale);
+                double newScale = GetScaleFactor(db.Cannoscale); // Task 3: CAD -> Plugin Sync
                 
                 if (Math.Abs(_plotScale - newScale) > 1e-6)
                 {
                     _plotScale = newScale;
                     this.Dispatcher.BeginInvoke(new Action(() => {
-                        if (txtScale != null) txtScale.Text = _plotScale.ToString("G");
+                        if (txtScale != null) txtScale.Text = _plotScale.ToString("0"); // Integer representation
                         ScaleAllText();
                     }));
                 }
@@ -890,8 +911,10 @@ public class CadastreWpfWindow : System.Windows.Window
                     if (ent is DBText dbt)
                     {
                         string layer = dbt.Layer;
+                        double basePaperHeight = CadConstants.GetReferenceHeight(layer);
                         bool isTargetLayer = targetLayers.Any(l => string.Equals(l, layer, StringComparison.OrdinalIgnoreCase));
 
+                        // Task 2: Absolute Pro-Rata Scaling Math
                         // We only move text on specific layers with specific justifications
                         if (isTargetLayer && (dbt.Justify == AttachmentPoint.BottomCenter || dbt.Justify == AttachmentPoint.TopCenter))
                         {
@@ -900,8 +923,8 @@ public class CadastreWpfWindow : System.Windows.Window
                                 dbt.UpgradeOpen();
 
                                 // Absolute Offset Math: maintain a 1.5mm paper-space gap
-                                double basePaperSize = 2.0; // Bearing/Distance labels use 2.0
-                                double currentLabelScale = (dbt.Height / basePaperSize) * 1000.0;
+                                // currentLabelScale is derived from height and its constant reference
+                                double currentLabelScale = (dbt.Height / basePaperHeight) * 1000.0;
                                 double moveDist = (_plotScale - currentLabelScale) * (1.5 / 1000.0);
 
                                 if (Math.Abs(moveDist) > 1e-6)
@@ -920,31 +943,24 @@ public class CadastreWpfWindow : System.Windows.Window
                                     dbt.AlignmentPoint += displacement;
                                 }
 
-                                dbt.Height = GetModelSize(basePaperSize);
+                                dbt.Height = GetModelSize(basePaperHeight);
                                 count++;
                             }
                             catch { }
                         }
                         else 
                         {
-                            // For other layers like Point Number or Comment, just update height if applicable
-                            double paperSize = 0;
-                            if (layer == CadConstants.POINT_NUMBER || layer.Equals("STNO", StringComparison.OrdinalIgnoreCase)) paperSize = 1.8;
-                            else if (layer == CadConstants.SYMB_TEXT || layer.Equals("CORINF", StringComparison.OrdinalIgnoreCase)) paperSize = 1.6;
-
-                            if (paperSize > 0)
-                            {
-                                dbt.UpgradeOpen();
-                                dbt.Height = GetModelSize(paperSize);
-                                count++;
-                            }
+                            // Task 2: Just update height for other layers (Point Number, etc.)
+                            dbt.UpgradeOpen();
+                            dbt.Height = GetModelSize(basePaperHeight);
+                            count++;
                         }
                     }
                 }
 
                 _prevPlotScale = _plotScale;
                 tr.Commit();
-                ed.WriteMessage($"\n[Scale] Bidirectional sync complete. {count} labels updated for 1:{_plotScale}.");
+                ed.WriteMessage($"\n[Scale] Absolute pro-rata sync complete. {count} labels updated for 1:{_plotScale}.");
                 ed.UpdateScreen();
                 ed.Regen();
 
@@ -1590,9 +1606,9 @@ public class CadastreWpfWindow : System.Windows.Window
         double dx = Math.Cos(cadAngleRad); 
         double dy = Math.Sin(cadAngleRad); 
         
-        TextSettings brgSettings = new TextSettings { Style = "STENDOT100", Size = 3.0 };
-        TextSettings distSettings = new TextSettings { Style = "STENDOT100S", Size = 3.0 };
         string brgLayer, distLayer;
+        string brgStyle = "STENDOT100";
+        string distStyle = "STENDOT100S";
 
         if (_currentLayer == "BOUNDARY_SUBJECT")
         {
@@ -1602,19 +1618,16 @@ public class CadastreWpfWindow : System.Windows.Window
         else
         {
             brgLayer = CadConstants.CONNECTION_BEAR;
-            brgSettings.Size = 2.5;
-            brgSettings.Style = "STENDOT80";
-
             distLayer = CadConstants.CONNECTION_DIST;
-            distSettings.Size = 2.5;
-            distSettings.Style = "STENDOT80";
+            brgStyle = "STENDOT80";
+            distStyle = "STENDOT80";
         }
 
         double offsetDist = GetModelSize(1.5);
         Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
 
-        ids.Add(AddToDb(CreateText(CadMath.FormatAsSurveyor(rawBrg), brgLayer, mid + (upVec * offsetDist), AttachmentPoint.BottomCenter, tr, btr.Database, brgSettings, textRot), btr, tr));
-        ids.Add(AddToDb(CreateText(dist.ToString("0.000"), distLayer, mid - (upVec * offsetDist), AttachmentPoint.TopCenter, tr, btr.Database, distSettings, textRot), btr, tr));
+        ids.Add(AddToDb(CreateText(CadMath.FormatAsSurveyor(rawBrg), brgLayer, mid + (upVec * offsetDist), AttachmentPoint.BottomCenter, tr, btr.Database, new TextSettings { Style = brgStyle }, textRot), btr, tr));
+        ids.Add(AddToDb(CreateText(dist.ToString("0.000"), distLayer, mid - (upVec * offsetDist), AttachmentPoint.TopCenter, tr, btr.Database, new TextSettings { Style = distStyle }, textRot), btr, tr));
         
         return ids;
     }
@@ -1623,7 +1636,10 @@ public class CadastreWpfWindow : System.Windows.Window
     {
         EnsureLayerExistsInternal(layer, null, tr, db);
         ObjectId styleId = GetTextStyleId(tr, ts.Style, db);
-        double finalHeight = GetModelSize(ts.Size);
+        
+        // Task 1: Retrieve base value based on entity's layer name
+        double baseHeight = CadConstants.GetReferenceHeight(layer);
+        double finalHeight = GetModelSize(baseHeight);
 
         if (ts.IsMText)
         {
@@ -2308,14 +2324,9 @@ public class CadastreWpfWindow : System.Windows.Window
                         bool textChanged = (finalString != oldText);
 
                         // Stage 4: Scaling logic
-                        double baseSize = 0;
-                        if (isBear) baseSize = 2.0;
-                        else if (isDim) baseSize = 2.0;
-                        else if (isStno) baseSize = 1.8;
-                        else if (isCorinf) baseSize = 1.6;
-
+                        double baseSize = CadConstants.GetReferenceHeight(targetLayer ?? "");
                         double targetHeight = GetModelSize(baseSize);
-                        bool heightChanged = (baseSize > 0 && Math.Abs(dbt.Height - targetHeight) > 0.0001);
+                        bool heightChanged = (Math.Abs(dbt.Height - targetHeight) > 0.0001);
 
                         // Stage 5: Style & Obliquing logic
                         ObjectId targetStyle = ObjectId.Null;
