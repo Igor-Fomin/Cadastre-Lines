@@ -568,6 +568,18 @@ public class CadastreWpfWindow : System.Windows.Window
         });
     }
 
+    private bool ValidateScaleExists(double targetScale)
+    {
+        try
+        {
+            Database db = _doc.Database;
+            ObjectContextManager manager = db.ObjectContextManager;
+            ObjectContextCollection collection = manager.GetContextCollection("ACDB_ANNOTATIONSCALES");
+            return collection.GetContext($"1:{targetScale}") != null;
+        }
+        catch { return false; }
+    }
+
     private void CadastreWpfWindow_Closed(object? sender, EventArgs e)
     {
         _doc.Database.SystemVariableChanged -= Database_SystemVariableChanged;
