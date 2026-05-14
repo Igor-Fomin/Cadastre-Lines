@@ -1,4 +1,4 @@
-#pragma warning disable CA1416 // Suppress Audio warning
+#pragma warning disable CA1416 // Suppress Audio warnings
 #pragma warning disable CS8618 // Suppress Non-nullable field warnings
 #pragma warning disable CS8600 // Suppress Null conversion warnings
 #pragma warning disable CS8601 // Suppress Null assignment warnings
