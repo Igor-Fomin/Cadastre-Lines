@@ -1715,7 +1715,7 @@ public class CadastreWpfWindow : System.Windows.Window
         tst.UpgradeOpen();
         TextStyleTableRecord tstr = new TextStyleTableRecord();
         tstr.Name = styleName;
-        tstr.FileName = "romans.shx";
+        tstr.FileName = (styleName == "SS" || styleName == "SU") ? "survacad.shx" : "romans.shx";
         tst.Add(tstr);
         tr.AddNewlyCreatedDBObject(tstr, true);
         return tstr.ObjectId;
