@@ -1184,14 +1184,17 @@ public class CadastreWpfWindow : System.Windows.Window
         r1.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
         Button btnSwapText = UITheme.CreateActionBtn("Swap Text", UITheme.ActionBlue); btnSwapText.Height = 35; btnSwapText.Margin = new Thickness(2);
+        btnSwapText.ToolTip = "Swaps the positions of bearing and distance labels.";
         btnSwapText.Click += (s, e) => ExecuteUiAction(() => ExecuteSwapText());
         Grid.SetColumn(btnSwapText, 0); r1.Children.Add(btnSwapText);
 
         Button btnRot180 = UITheme.CreateActionBtn("180\u00B0 Text", UITheme.ActionBlue); btnRot180.Height = 35; btnRot180.Margin = new Thickness(2);
+        btnRot180.ToolTip = "Reverses the direction of a selected bearing by adding 180 degrees.";
         btnRot180.Click += (s, e) => ExecuteUiAction(() => RotateBearingText());
         Grid.SetColumn(btnRot180, 1); r1.Children.Add(btnRot180);
 
         Button btnAnnotate = UITheme.CreateActionBtn("Annotate Line", UITheme.ActionBlue); btnAnnotate.Height = 35; btnAnnotate.Margin = new Thickness(2);
+        btnAnnotate.ToolTip = "Pick a drawing line to automatically calculate and place new labels on it.";
         btnAnnotate.Click += (s, e) => ExecuteUiAction(() => AnnotateSelectedLine());
         Grid.SetColumn(btnAnnotate, 2); r1.Children.Add(btnAnnotate);
 
@@ -1202,10 +1205,12 @@ public class CadastreWpfWindow : System.Windows.Window
         r2.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 
         Button btnQld = UITheme.CreateActionBtn("QLD Format", UITheme.ActionBlue); btnQld.Height = 35; btnQld.Margin = new Thickness(2);
+        btnQld.ToolTip = "Performs a full drawing sweep to convert cadastre layers, apply 20-degree obliquing to dimensions, change fonts to survacad.shx, and insert specialized surveyor symbol codes.";
         btnQld.Click += (s, e) => ExecuteUiAction(() => ApplyQLDStandards());
         Grid.SetColumn(btnQld, 0); r2.Children.Add(btnQld);
 
         Button btnNt = UITheme.CreateActionBtn("NT Format", UITheme.ActionBlue); btnNt.Height = 35; btnNt.Margin = new Thickness(2);
+        btnNt.ToolTip = "Performs a drawing sweep to clean up text strings by truncating trailing decimal zeros on distances and removing zero minutes or seconds on bearings.";
         btnNt.Click += (s, e) => ExecuteUiAction(() => ApplyNTStandards());
         Grid.SetColumn(btnNt, 1); r2.Children.Add(btnNt);
 
