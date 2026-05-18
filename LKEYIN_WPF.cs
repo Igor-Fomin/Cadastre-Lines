@@ -2024,8 +2024,8 @@ public class CadastreWpfWindow : System.Windows.Window
                     BlockTable bt = (BlockTable)tr.GetObject(_doc.Database.BlockTableId, OpenMode.ForRead);
                     BlockTableRecord btr = (BlockTableRecord)tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead);
 
-                    string[] bearingLayers = { CadConstants.BDY_BEARING, CadConstants.CONNECTION_BEAR };
-                    string[] distanceLayers = { CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_DIST };
+                    string[] bearingLayers = { CadConstants.BDY_BEARING, CadConstants.CONNECTION_BEAR, "BEAR" };
+                    string[] distanceLayers = { CadConstants.BDY_DISTANCE, CadConstants.CONNECTION_DIST, "DIM" };
 
                     Entity bearingText = null;
                     Entity distText = null;
@@ -2124,7 +2124,7 @@ public class CadastreWpfWindow : System.Windows.Window
                     Entity ent = (Entity)tr.GetObject(per.ObjectId, OpenMode.ForWrite);
 
                     // Strict Target Validation
-                    bool isBearingLayer = (ent.Layer == CadConstants.BDY_BEARING || ent.Layer == CadConstants.CONNECTION_BEAR);
+                    bool isBearingLayer = (ent.Layer == CadConstants.BDY_BEARING || ent.Layer == CadConstants.CONNECTION_BEAR || string.Equals(ent.Layer, "BEAR", StringComparison.OrdinalIgnoreCase));
                     if (!isBearingLayer)
                     {
                         ed.WriteMessage("\n[Error] Please select TEXT on a Bearing layer.");
