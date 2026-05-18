@@ -980,19 +980,27 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void ShowAboutPopup()
     {
-        string aboutMsg = "CADASTRE PRO\n\n" +
-                          "WORKFLOW:\n" +
-                          "1. PgUp: Start Point Menu (Type or Pick).\n" +
-                          "2. Enter Bearing/Dist (Auto-Calc available).\n" +
-                          "3. Press Enter to Draw.\n" +
-                          "4. Use QWE-ASD to switch layers.\n\n" +
-                          "HOTKEYS:\n" +
-                          " • End/PgDn: New Line / Pick Point\n" +
-                          " • PgUp: Side Shot Menu\n" +
-                          " • Insert: Add Comment\n" +
-                          " • Delete: Undo Last\n" +
-                          " • Arrows: Rotate Bearing";
-        MessageBox.Show(aboutMsg, "About Cadastre Pro", MessageBoxButton.OK, MessageBoxImage.Information);
+        string aboutMsg = "TECHNICAL HELP MANUAL - CADASTRE PRO\n\n" +
+                          "SECTION 1: CORE SYSTEM WORKFLOW\n" +
+                          "To initialize a traverse, establish the base coordinate origin by either manual Easting/Northing entry (End key) or by selecting an existing AutoCAD node directly in the drawing space (PgDn key). Once the origin is set, entering consecutive bearings and distances will automatically sequence the line geometry and draft the corresponding surveyor annotations.\n\n" +
+                          "SECTION 2: SMART FIELD & INPUT CAPABILITIES\n" +
+                          "Both the Bearing and Distance fields feature real-time inline evaluation, allowing you to enter mathematical equations (e.g., combining measurements using +, -, *, or / operators). Additionally, the active drawing layer can be switched instantly using the Q, W, E, A, S, and D hotkeys, which also dynamically updates the control panel UI colors.\n\n" +
+                          "SECTION 3: TRAVERSAL NAVIGATION & SHORTCUTS\n" +
+                          " • Arrow Keys: Instantly shift the current bearing by 90\u00B0 or 180\u00B0 increments.\n" +
+                          " • PgUp: Routes into the independent Side Shot/Radiation geometry window.\n" +
+                          " • Ins: Places a distinct, standalone text remark at the current station.\n" +
+                          " • Del: Securely steps backward by undoing the last line creation and automatically re-aligning the station point counter.\n\n" +
+                          "SECTION 4: INTERACTIVE ANNOTATION UTILITIES\n" +
+                          " • Swap Text: Scans the immediate perimeter of a boundary line to invert the relative placement of bearing and distance strings.\n" +
+                          " • 180\u00B0 Text: Targets and reverses the angle readout text on structural lines.\n" +
+                          " • Annotate Line: Calculates properties on selected CAD vectors to place clean surveyor strings dynamically.\n\n" +
+                          "SECTION 5: REGIONAL STANDARD MACRO SWEEPS\n" +
+                          " • QLD Format: Translates geometry to statutory layers (70, 35, TRAV, AABT), switches fonts to survacad.shx, applies a cursive 20\u00B0 slant to dimensions, formats measurements using pipe character markers (|), and converts outputs to AutoCAD symbol code syntax (%%d, %%135, %%136).\n" +
+                          " • NT Format: Completes a comprehensive cleanup pass to remove redundant trailing zero indicators on survey distances and strips empty minutes or seconds from bearings.";
+
+        HelpWpfWindow hWin = new HelpWpfWindow(aboutMsg);
+        hWin.Owner = this;
+        hWin.Show(); // Modeless
     }
     #endregion
 
@@ -2794,6 +2802,43 @@ public class CommentWpfWindow : System.Windows.Window
         Grid.SetRow(card, 0); Grid.SetRow(btnOk, 1);
         root.Children.Add(card); root.Children.Add(btnOk);
         this.Content = root; this.Loaded += (s, e) => txtComm.Focus();
+    }
+}
+
+public class HelpWpfWindow : System.Windows.Window
+{
+    public HelpWpfWindow(string content)
+    {
+        this.Title = "TECHNICAL HELP MANUAL - CADASTRE PRO";
+        this.Width = 550;
+        this.Height = 650;
+        this.Background = UITheme.BackgroundBrush;
+        this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        this.ShowInTaskbar = false;
+
+        Grid root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+
+        ScrollViewer sv = new ScrollViewer() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(15) };
+        TextBlock tb = new TextBlock() { 
+            Text = content, 
+            Foreground = Brushes.White, 
+            TextWrapping = TextWrapping.Wrap, 
+            FontFamily = new FontFamily("Segoe UI"), 
+            FontSize = 13,
+            LineHeight = 20
+        };
+        sv.Content = tb;
+        Grid.SetRow(sv, 0);
+        root.Children.Add(sv);
+
+        Button btnClose = new Button() { Content = "CLOSE", Height = 40, Width = 100, Margin = new Thickness(0, 0, 0, 15), Background = UITheme.ActionBlue, Foreground = Brushes.White, FontWeight = FontWeights.Bold };
+        btnClose.Click += (s, e) => this.Close();
+        Grid.SetRow(btnClose, 1);
+        root.Children.Add(btnClose);
+
+        this.Content = root;
     }
 }
 #endregion
