@@ -980,7 +980,7 @@ public class CadastreWpfWindow : System.Windows.Window
 
     private void ShowAboutPopup()
     {
-        string aboutMsg = "TECHNICAL HELP MANUAL - CADASTRE PRO\n\n" +
+        string aboutMsg = "TECHNICAL HELP MANUAL - CADASTRE LINES\n\n" +
                           "SECTION 1: CORE SYSTEM WORKFLOW\n" +
                           "To initialize a traverse, establish the base coordinate origin by either manual Easting/Northing entry (End key) or by selecting an existing AutoCAD node directly in the drawing space (PgDn key). Once the origin is set, entering consecutive bearings and distances will automatically sequence the line geometry and draft the corresponding surveyor annotations.\n\n" +
                           "SECTION 2: SMART FIELD & INPUT CAPABILITIES\n" +
@@ -2809,7 +2809,7 @@ public class HelpWpfWindow : System.Windows.Window
 {
     public HelpWpfWindow(string content)
     {
-        this.Title = "TECHNICAL HELP MANUAL - CADASTRE PRO";
+        this.Title = "TECHNICAL HELP MANUAL - CADASTRE LINES";
         this.Width = 550;
         this.Height = 650;
         this.Background = UITheme.BackgroundBrush;
