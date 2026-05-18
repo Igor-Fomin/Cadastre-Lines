@@ -830,6 +830,7 @@ public class CadastreWpfWindow : System.Windows.Window
             _config.TextBrg.Visible = !_config.TextBrg.Visible;
             ToggleLayerVisibility(CadConstants.BDY_BEARING, _config.TextBrg.Visible);
             ToggleLayerVisibility(CadConstants.CONNECTION_BEAR, _config.TextBrg.Visible);
+            ToggleLayerVisibility("BEAR", _config.TextBrg.Visible);
             UpdateToggleStyle(btnTglBrg, _config.TextBrg.Visible);
             AppSettings.Save(_config);
             _doc.Editor.Regen();
@@ -838,6 +839,7 @@ public class CadastreWpfWindow : System.Windows.Window
             _config.TextDist.Visible = !_config.TextDist.Visible;
             ToggleLayerVisibility(CadConstants.BDY_DISTANCE, _config.TextDist.Visible);
             ToggleLayerVisibility(CadConstants.CONNECTION_DIST, _config.TextDist.Visible);
+            ToggleLayerVisibility("DIM", _config.TextDist.Visible);
             UpdateToggleStyle(btnTglDist, _config.TextDist.Visible);
             AppSettings.Save(_config);
             _doc.Editor.Regen();
@@ -845,6 +847,7 @@ public class CadastreWpfWindow : System.Windows.Window
         btnTglPt.Click += (s, e) => {
             _config.TextPt.Visible = !_config.TextPt.Visible;
             ToggleLayerVisibility(CadConstants.POINT_NUMBER, _config.TextPt.Visible);
+            ToggleLayerVisibility("STNO", _config.TextPt.Visible);
             UpdateToggleStyle(btnTglPt, _config.TextPt.Visible);
             AppSettings.Save(_config);
             _doc.Editor.Regen();
@@ -852,6 +855,7 @@ public class CadastreWpfWindow : System.Windows.Window
         btnTglComm.Click += (s, e) => {
             _config.TextComm.Visible = !_config.TextComm.Visible;
             ToggleLayerVisibility(CadConstants.SYMB_TEXT, _config.TextComm.Visible);
+            ToggleLayerVisibility("CORINF", _config.TextComm.Visible);
             UpdateToggleStyle(btnTglComm, _config.TextComm.Visible);
             AppSettings.Save(_config);
             _doc.Editor.Regen();
