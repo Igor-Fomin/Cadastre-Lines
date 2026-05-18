@@ -1614,7 +1614,18 @@ public class CadastreWpfWindow : System.Windows.Window
         string brgStyle = "STENDOT100";
         string distStyle = "STENDOT100S";
 
-        if (_currentLayer == "BOUNDARY_SUBJECT")
+        // QLD Standard Check
+        string[] qldLayers = { "70", "35", "TRAV", "AABT" };
+        bool isQld = qldLayers.Contains(_currentLayer);
+
+        if (isQld)
+        {
+            brgLayer = "BEAR";
+            distLayer = "DIM";
+            brgStyle = "SU";
+            distStyle = "SS";
+        }
+        else if (_currentLayer == "BOUNDARY_SUBJECT")
         {
             brgLayer = CadConstants.BDY_BEARING;
             distLayer = CadConstants.BDY_DISTANCE;
@@ -1630,8 +1641,19 @@ public class CadastreWpfWindow : System.Windows.Window
         double offsetDist = GetModelSize(1.5);
         Vector3d upVec = isFlipped ? new Vector3d(dy, -dx, 0) : new Vector3d(-dy, dx, 0);
 
-        ids.Add(AddToDb(CreateText(CadMath.FormatAsSurveyor(rawBrg), brgLayer, mid + (upVec * offsetDist), AttachmentPoint.BottomCenter, tr, btr.Database, new TextSettings { Style = brgStyle }, textRot), btr, tr));
-        ids.Add(AddToDb(CreateText(dist.ToString("0.000"), distLayer, mid - (upVec * offsetDist), AttachmentPoint.TopCenter, tr, btr.Database, new TextSettings { Style = distStyle }, textRot), btr, tr));
+        string brgText = CadMath.FormatAsSurveyor(rawBrg);
+        string distText = dist.ToString("0.000");
+
+        if (isQld)
+        {
+            brgText = FormatBearingNT(brgText);
+            // Replace symbols for QLD standard
+            brgText = brgText.Replace("°", "%%d").Replace("'", "%%135").Replace("\"", "%%136");
+            distText = FormatDistanceQLD(distText);
+        }
+
+        ids.Add(AddToDb(CreateText(brgText, brgLayer, mid + (upVec * offsetDist), AttachmentPoint.BottomCenter, tr, btr.Database, new TextSettings { Style = brgStyle }, textRot), btr, tr));
+        ids.Add(AddToDb(CreateText(distText, distLayer, mid - (upVec * offsetDist), AttachmentPoint.TopCenter, tr, btr.Database, new TextSettings { Style = distStyle }, textRot), btr, tr));
         
         return ids;
     }
@@ -1672,6 +1694,7 @@ public class CadastreWpfWindow : System.Windows.Window
             dt.AlignmentPoint = pt;
             dt.ColorIndex = 256; // Forced ByLayer
             if (ts.Style == "STENDOT100S") dt.Oblique = 23.0 * (Math.PI / 180.0);
+            if (string.Equals(layer, "DIM", StringComparison.OrdinalIgnoreCase)) dt.Oblique = 20.0 * (Math.PI / 180.0);
             return dt;
         }
     }
