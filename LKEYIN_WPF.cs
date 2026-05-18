@@ -1323,7 +1323,17 @@ public class CadastreWpfWindow : System.Windows.Window
                         if (string.IsNullOrWhiteSpace(txtBearing.Text)) txtBearing.Focus();
                         return;
                     }
-                    ExecuteUiAction(() => ExecuteManualDraw());
+
+                    if (!_hasStartPoint)
+                    {
+                        TriggerCoordsWindow();
+                        // If start point was established, proceed to draw
+                        if (_hasStartPoint) ExecuteUiAction(() => ExecuteManualDraw());
+                    }
+                    else
+                    {
+                        ExecuteUiAction(() => ExecuteManualDraw());
+                    }
                 }
             }
         }
@@ -1374,7 +1384,11 @@ public class CadastreWpfWindow : System.Windows.Window
     #region Primary Drawing Logic
     private void ExecuteManualDraw()
     {
-        if (!_hasStartPoint) { TriggerCoordsWindow(); return; }
+        if (!_hasStartPoint)
+        {
+            _doc.Editor.WriteMessage("\n[Error] No start point defined. Please set a point first.");
+            return;
+        }
         if (!EnsureQuiescent()) return;
         if (!ValidateDocument()) return;
 
